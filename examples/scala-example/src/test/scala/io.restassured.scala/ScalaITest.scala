@@ -18,30 +18,22 @@ package io.restassured.scala
 
 import io.restassured.RestAssured.given
 import io.restassured.module.scala.RestAssuredSupport.AddThenToResponse
-import okhttp3.mockwebserver.{MockResponse, MockWebServer}
+import mockwebserver3.junit5.StartStop
+import mockwebserver3.{MockResponse, MockWebServer}
 import org.hamcrest.Matchers.equalTo
-import org.junit.{After, Before, Test}
+import org.junit.jupiter.api.Test
 
 class ScalaITest {
 
-  var webServer: MockWebServer = _
-
-  @Before
-  def `Mock web server is initialized`() {
-    webServer = new MockWebServer()
-    webServer.start()
-  }
-
-  @After
-  def `Mock web server is shutdown`() {
-    webServer.shutdown()
-  }
+  @StartStop
+  var webServer: MockWebServer = new MockWebServer()
 
   @Test
-  def `trying out rest assured in scala`() {
-    val response = new MockResponse
-    response.setBody( """ { "key" : "value" } """)
-    response.setHeader("content-type", "application/json")
+  def `trying out rest assured in scala`(): Unit = {
+    val response = new MockResponse.Builder()
+            .body("""{ "key" : "value" }""")
+            .addHeader("content-type", "application/json")
+            .build()
     webServer.enqueue(response)
 
     given().
@@ -54,10 +46,11 @@ class ScalaITest {
   }
 
   @Test
-  def `trying out rest assured in scala with implicit conversion`() {
-    val response = new MockResponse
-    response.setBody( """ { "key" : "value" } """)
-    response.setHeader("content-type", "application/json")
+  def `trying out rest assured in scala with implicit conversion`(): Unit = {
+    val response = new MockResponse.Builder()
+            .body("""{ "key" : "value" }""")
+            .addHeader("content-type", "application/json")
+            .build()
     webServer.enqueue(response)
 
     given().

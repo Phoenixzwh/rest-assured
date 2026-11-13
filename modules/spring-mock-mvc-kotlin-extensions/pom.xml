@@ -20,33 +20,56 @@
     <parent>
         <artifactId>modules</artifactId>
         <groupId>io.rest-assured</groupId>
-        <version>4.4.1-SNAPSHOT</version>
+        <version>7.0.0-SNAPSHOT</version>
     </parent>
 
     <artifactId>spring-mock-mvc-kotlin-extensions</artifactId>
-    <version>4.4.1-SNAPSHOT</version>
+    <version>7.0.0-SNAPSHOT</version>
     <name>spring-mock-mvc-kotlin-extensions</name>
-    <url>http://maven.apache.org</url>
+    <url>https://rest-assured.io/</url>
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <dokka.version>1.4.10.2</dokka.version>
+        <spring.version>7.0.10</spring.version>
+        <servlet-api.version>6.1.0</servlet-api.version>
     </properties>
 
     <dependencies>
         <dependency>
             <groupId>org.jetbrains.kotlin</groupId>
-            <artifactId>kotlin-stdlib-jdk8</artifactId>
+            <artifactId>kotlin-stdlib</artifactId>
         </dependency>
         <dependency>
             <groupId>io.rest-assured</groupId>
             <artifactId>spring-mock-mvc</artifactId>
-            <version>4.4.1-SNAPSHOT</version>
+            <version>7.0.0-SNAPSHOT</version>
         </dependency>
         <dependency>
-            <groupId>javax.servlet</groupId>
-            <artifactId>javax.servlet-api</artifactId>
-            <version>3.1.0</version>
+            <groupId>io.rest-assured</groupId>
+            <artifactId>json-path-gpath</artifactId>
+            <version>7.0.0-SNAPSHOT</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.servlet</groupId>
+            <artifactId>jakarta.servlet-api</artifactId>
+            <version>${servlet-api.version}</version>
             <scope>provided</scope>
+        </dependency>
+
+        <!-- spring-mock-mvc declares these as optional (Spring 7 is not a hard runtime requirement for
+             consumers using a different MockMvc-compatible provider), so this module's own tests, which
+             use MockMvcBuilders/MockMvc directly, need them explicitly. -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-test</artifactId>
+            <version>${spring.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-webmvc</artifactId>
+            <version>${spring.version}</version>
+            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.module</groupId>
@@ -57,8 +80,8 @@
 
         <!-- Test -->
         <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -131,19 +154,12 @@
                     <args>
                         <arg>-Xjsr305=strict</arg>
                     </args>
-                    <jvmTarget>1.8</jvmTarget>
+                    <jvmTarget>17</jvmTarget>
+                    <languageVersion>${kotlin.language.version}</languageVersion>
+                    <apiVersion>${kotlin.language.version}</apiVersion>
                 </configuration>
             </plugin>
         </plugins>
     </build>
-
-    <pluginRepositories>
-        <!-- The Dokka plugin is in JCenter-->
-        <pluginRepository>
-            <id>jcenter</id>
-            <name>JCenter</name>
-            <url>https://jcenter.bintray.com/</url>
-        </pluginRepository>
-    </pluginRepositories>
 
 </project>

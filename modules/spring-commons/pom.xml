@@ -19,22 +19,30 @@
     <parent>
         <groupId>io.rest-assured</groupId>
         <artifactId>modules</artifactId>
-        <version>4.4.1-SNAPSHOT</version>
+        <version>7.0.0-SNAPSHOT</version>
     </parent>
     <artifactId>spring-commons</artifactId>
-    <version>4.4.1-SNAPSHOT</version>
+    <version>7.0.0-SNAPSHOT</version>
     <name>spring-commons</name>
-    <url>http://maven.apache.org</url>
+    <url>https://rest-assured.io/</url>
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <spring.version>5.0.9.RELEASE</spring.version>
     </properties>
 
     <dependencies>
         <dependency>
             <groupId>io.rest-assured</groupId>
             <artifactId>rest-assured</artifactId>
-            <version>4.4.1-SNAPSHOT</version>
+            <version>7.0.0-SNAPSHOT</version>
         </dependency>
     </dependencies>
+    <build>
+        <plugins>
+            <!-- Checks that this module doesn't bring Groovy (see the root pom) -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
 </project>

@@ -16,21 +16,25 @@
 
 package io.restassured.module.webtestclient;
 
+import io.restassured.config.SessionConfig;
+import io.restassured.module.webtestclient.config.RestAssuredWebTestClientConfig;
+import io.restassured.module.webtestclient.response.WebTestClientResponse;
 import io.restassured.module.webtestclient.setup.CookieProcessor;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 import org.springframework.web.reactive.function.server.RouterFunction;
 import org.springframework.web.reactive.function.server.RouterFunctions;
 import org.springframework.web.reactive.function.server.ServerResponse;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.web.reactive.function.server.RequestPredicates.method;
 import static org.springframework.web.reactive.function.server.RequestPredicates.path;
 
 public class SetCookiesTest {
 
-	@BeforeClass
+	@BeforeAll
 	public static void configureWebTestClientInstance() {
 		RouterFunction<ServerResponse> setAttributesRoute = RouterFunctions
 				.route(path("/setCookies").and(method(HttpMethod.GET)),
@@ -38,7 +42,7 @@ public class SetCookiesTest {
 		RestAssuredWebTestClient.standaloneSetup(setAttributesRoute);
 	}
 
-	@AfterClass
+	@AfterAll
 	public static void restRestAssured() {
 		RestAssuredWebTestClient.reset();
 	}
@@ -47,13 +51,41 @@ public class SetCookiesTest {
 	public void
 	can_receive_cookies() {
 		RestAssuredWebTestClient.given()
-				.queryParam("name", "John Doe")
-				.queryParam("project", "rest assured")
+				.queryParam("name", "JohnDoe")
+				.queryParam("project", "rest-assured")
 				.when()
 				.get("/setCookies")
 				.then()
 				.statusCode(200)
-				.cookie("name", "John Doe")
-				.cookie("project", "rest assured");
+				.cookie("name", "JohnDoe")
+				.cookie("project", "rest-assured");
+	}
+
+	@Test
+	public void
+	session_id_is_the_value_of_the_jsessionid_cookie_by_default() {
+		WebTestClientResponse response = RestAssuredWebTestClient.given()
+				.queryParam("JSESSIONID", "abc")
+				.queryParam("project", "rest-assured")
+				.when()
+				.get("/setCookies");
+
+		assertThat(response.sessionId()).isEqualTo("abc");
+		assertThat(response.getSessionId()).isEqualTo("abc");
+	}
+
+	@Test
+	public void
+	session_id_is_the_value_of_the_cookie_named_by_the_session_config() {
+		String sessionId = RestAssuredWebTestClient.given()
+				.config(RestAssuredWebTestClientConfig.config().sessionConfig(new SessionConfig("PHPSESSID", null)))
+				.queryParam("JSESSIONID", "abc")
+				.queryParam("PHPSESSID", "def")
+				.when()
+				.get("/setCookies")
+				.then()
+				.extract().sessionId();
+
+		assertThat(sessionId).isEqualTo("def");
 	}
 }

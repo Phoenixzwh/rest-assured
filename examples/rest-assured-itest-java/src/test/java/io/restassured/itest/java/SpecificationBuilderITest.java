@@ -19,14 +19,14 @@ package io.restassured.itest.java;
 import io.restassured.RestAssured;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.builder.ResponseSpecBuilder;
-import io.restassured.config.HeaderConfig;
 import io.restassured.http.Cookies;
+import io.restassured.itest.java.support.ResponseLog;
 import io.restassured.itest.java.support.WithJetty;
 import io.restassured.specification.RequestSpecification;
 import io.restassured.specification.ResponseSpecification;
 import org.apache.commons.io.output.WriterOutputStream;
 import org.hamcrest.Matchers;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.io.PrintStream;
 import java.io.StringWriter;
@@ -37,7 +37,6 @@ import static io.restassured.config.RedirectConfig.redirectConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static io.restassured.filter.log.LogDetail.ALL;
 import static java.util.Arrays.asList;
-import static org.apache.http.HttpStatus.SC_OK;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
@@ -195,7 +194,9 @@ public class SpecificationBuilderITest extends WithJetty {
                 spec(spec2).
                 cookie("cookie2", "value2").
         expect().
-                body(equalTo("cookie1, cookie3, cookie2")).
+                // JDK differences table, connection reuse: the request goes on a connection an earlier test used, and
+                // Jetty 9.4 reuses the cookies it parsed there when the Cookie header only differs in case
+                body(equalToIgnoringCase("cookie1, cookie3, cookie2")).
         when().
                 get("/cookie");
     }
@@ -377,28 +378,29 @@ public class SpecificationBuilderITest extends WithJetty {
              setConfig(newConfig().logConfig(logConfig().defaultStream(captor))).
              addPathParam("firstName", "John").
              addPathParam("lastName", "Doe").build();
-        final ResponseSpecification responseSpec = new ResponseSpecBuilder().expectStatusCode(SC_OK).log(ALL).build();
+        final ResponseSpecification responseSpec = new ResponseSpecBuilder().expectStatusCode(200).log(ALL).build();
 
         given(requestSpec, responseSpec).
                                          get("/{firstName}/{lastName}");
 
-        assertThat(writer.toString(), equalTo(String.format("HTTP/1.1 200 OK%n" +
+        // JDK differences table, header names and order
+        assertThat(writer.toString(), equalTo(ResponseLog.normalize(String.format("HTTP/1.1 200 OK%n" +
                 "Content-Type: application/json;charset=utf-8%n" +
                 "Content-Length: 59%n" +
-                "Server: Jetty(9.4.34.v20201102)%n" +
+                "Server: Jetty(9.4.58.v20250814)%n" +
                 "%n" +
                 "{\n" +
                 "    \"firstName\": \"John\",\n" +
                 "    \"lastName\": \"Doe\",\n" +
                 "    \"fullName\": \"John Doe\"\n" +
-                "}%n")));
+                "}%n"))));
     }
 
     @Test
     public void supportsSettingLoggingWhenUsingOnlyResponseSpecBuilder() {
         final StringWriter writer = new StringWriter();
         final PrintStream captor = new PrintStream(new WriterOutputStream(writer), true);
-        final ResponseSpecification responseSpec = new ResponseSpecBuilder().expectStatusCode(SC_OK).log(ALL).build();
+        final ResponseSpecification responseSpec = new ResponseSpecBuilder().expectStatusCode(200).log(ALL).build();
 
         given().
                 config(newConfig().logConfig(logConfig().defaultStream(captor))).
@@ -409,16 +411,17 @@ public class SpecificationBuilderITest extends WithJetty {
                spec(responseSpec).
                body("fullName", equalTo("John Doe"));
 
-        assertThat(writer.toString(), equalTo(String.format("HTTP/1.1 200 OK%n" +
+        // JDK differences table, header names and order
+        assertThat(writer.toString(), equalTo(ResponseLog.normalize(String.format("HTTP/1.1 200 OK%n" +
                 "Content-Type: application/json;charset=utf-8%n" +
                 "Content-Length: 59%n" +
-                "Server: Jetty(9.4.34.v20201102)%n" +
+                "Server: Jetty(9.4.58.v20250814)%n" +
                 "%n" +
                 "{\n" +
                 "    \"firstName\": \"John\",\n" +
                 "    \"lastName\": \"Doe\",\n" +
                 "    \"fullName\": \"John Doe\"\n" +
-                "}%n")));
+                "}%n"))));
     }
 
     @Test
@@ -510,6 +513,23 @@ public class SpecificationBuilderITest extends WithJetty {
             assertThat(cookies.size(), is(2));
             assertThat(cookies.hasCookieWithName("Cookie1"), is(true));
             assertThat(cookies.hasCookieWithName("Cookie3"), is(true));
+        } finally {
+            RestAssured.reset();
+        }
+    }
+
+    @Test
+    public void staticHeadersCookiesAndMultiPartsAreSentOnceWithABuiltSpecification() {
+        // Issue #1977
+        RestAssured.requestSpecification = new RequestSpecBuilder().addHeader("X-Static", "1").addCookie("static", "1").build();
+        RequestSpecification spec = new RequestSpecBuilder().addHeader("X-Spec", "1").build();
+        try {
+            assertThat(given(spec).get("/multiHeaderReflect").headers().getValues("X-Static"), contains("1"));
+            assertThat(given(spec, new ResponseSpecBuilder().build()).get("/multiHeaderReflect").headers().getValues("X-Static"), contains("1"));
+            assertThat(given(spec).get("/reflect").detailedCookies().getList("static"), hasSize(1));
+
+            RestAssured.requestSpecification = new RequestSpecBuilder().addMultiPart("other", "static").build();
+            assertThat(given(spec).post("/multipart/string").asString(), equalTo("static"));
         } finally {
             RestAssured.reset();
         }

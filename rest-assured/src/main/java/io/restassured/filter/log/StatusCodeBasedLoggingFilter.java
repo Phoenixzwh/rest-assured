@@ -17,6 +17,7 @@
 package io.restassured.filter.log;
 
 import io.restassured.builder.ResponseBuilder;
+import io.restassured.config.RestAssuredConfig;
 import io.restassured.filter.Filter;
 import io.restassured.filter.FilterContext;
 import io.restassured.internal.RestAssuredResponseImpl;
@@ -29,17 +30,17 @@ import org.hamcrest.Matcher;
 
 import java.io.PrintStream;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.Set;
-
-import static io.restassured.RestAssured.config;
+import java.util.TreeSet;
 
 class StatusCodeBasedLoggingFilter implements Filter {
 
     private final PrintStream stream;
     private final Matcher<?> matcher;
     private final LogDetail logDetail;
-    private final boolean shouldPrettyPrint;
+    // null to pretty print as the log config of the request says
+    private final Boolean shouldPrettyPrint;
+    // null to hide the headers that the log config of the request blacklists
     private final Set<String> blacklistedHeaders;
 
     /**
@@ -69,7 +70,7 @@ class StatusCodeBasedLoggingFilter implements Filter {
      * @param matcher   The matcher for the logging to take place
      */
     public StatusCodeBasedLoggingFilter(LogDetail logDetail, PrintStream stream, Matcher<? super Integer> matcher) {
-        this(logDetail, isPrettyPrintingEnabled(), stream, matcher);
+        this(null, logDetail, stream, matcher, null);
     }
 
     /**
@@ -81,7 +82,7 @@ class StatusCodeBasedLoggingFilter implements Filter {
      * @param matcher     The matcher for the logging to take place
      */
     public StatusCodeBasedLoggingFilter(LogDetail logDetail, boolean prettyPrint, PrintStream stream, Matcher<? super Integer> matcher) {
-        this(logDetail, prettyPrint, stream, matcher, Collections.emptySet());
+        this(Boolean.valueOf(prettyPrint), logDetail, stream, matcher, null);
     }
 
 
@@ -94,10 +95,13 @@ class StatusCodeBasedLoggingFilter implements Filter {
      * @param matcher     The matcher for the logging to take place
      */
     public StatusCodeBasedLoggingFilter(LogDetail logDetail, boolean prettyPrint, PrintStream stream, Matcher<? super Integer> matcher, Set<String> blacklistedHeaders) {
+        this(Boolean.valueOf(prettyPrint), logDetail, stream, matcher, Validate.notNull(blacklistedHeaders, "Blacklisted headers cannot be null"));
+    }
+
+    private StatusCodeBasedLoggingFilter(Boolean prettyPrint, LogDetail logDetail, PrintStream stream, Matcher<? super Integer> matcher, Set<String> blacklistedHeaders) {
         Validate.notNull(logDetail, "Log details cannot be null");
         Validate.notNull(stream, "Print stream cannot be null");
         Validate.notNull(matcher, "Matcher cannot be null");
-        Validate.notNull(blacklistedHeaders, "Blacklisted headers cannot be null");
         if (logDetail == LogDetail.PARAMS || logDetail == LogDetail.URI || logDetail == LogDetail.METHOD) {
             throw new IllegalArgumentException(String.format("%s is not a valid %s for a response.", logDetail, LogDetail.class.getSimpleName()));
         }
@@ -105,14 +109,22 @@ class StatusCodeBasedLoggingFilter implements Filter {
         this.logDetail = logDetail;
         this.stream = stream;
         this.matcher = matcher;
-        this.blacklistedHeaders = new HashSet<>(blacklistedHeaders);
+        if (blacklistedHeaders == null) {
+            this.blacklistedHeaders = null;
+        } else {
+            this.blacklistedHeaders = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+            this.blacklistedHeaders.addAll(blacklistedHeaders);
+        }
     }
 
     public Response filter(FilterableRequestSpecification requestSpec, FilterableResponseSpecification responseSpec, FilterContext ctx) {
         Response response = ctx.next(requestSpec, responseSpec);
         final int statusCode = response.statusCode();
         if (matcher.matches(statusCode)) {
-            ResponsePrinter.print(response, response, stream, logDetail, shouldPrettyPrint, blacklistedHeaders);
+            RestAssuredConfig config = requestSpec.getConfig();
+            boolean prettyPrint = shouldPrettyPrint != null ? shouldPrettyPrint : config == null || config.getLogConfig().isPrettyPrintingEnabled();
+            Set<String> blacklistedHeaders = this.blacklistedHeaders != null ? this.blacklistedHeaders : config == null ? Collections.emptySet() : config.getLogConfig().blacklistedHeaders();
+            ResponsePrinter.print(response, response, stream, logDetail, prettyPrint, blacklistedHeaders);
             final byte[] responseBody;
             if (logDetail == LogDetail.BODY || logDetail == LogDetail.ALL) {
                 responseBody = response.asByteArray();
@@ -131,15 +143,14 @@ class StatusCodeBasedLoggingFilter implements Filter {
      */
     private Response cloneResponseIfNeeded(Response response, byte[] responseAsString) {
         if (responseAsString != null && response instanceof RestAssuredResponseImpl && !((RestAssuredResponseImpl) response).getHasExpectations()) {
-            final Response build = new ResponseBuilder().clone(response).setBody(responseAsString).build();
+            final Response build = new ResponseBuilder()
+                .clone(response)
+                .setBody(responseAsString)
+                .build();
             ((RestAssuredResponseImpl) build).setHasExpectations(true);
             return build;
         }
         return response;
-    }
-
-    private static boolean isPrettyPrintingEnabled() {
-        return config == null || config.getLogConfig().isPrettyPrintingEnabled();
     }
 
     private void throwIAE(LogDetail params) {

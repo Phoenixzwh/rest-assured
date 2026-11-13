@@ -18,9 +18,10 @@ package io.restassured.itest.java;
 
 import io.restassured.config.LogConfig;
 import io.restassured.config.RestAssuredConfig;
+import io.restassured.itest.java.support.ResponseLog;
 import io.restassured.itest.java.support.WithJetty;
 import org.apache.commons.io.output.WriterOutputStream;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.io.PrintStream;
 import java.io.StringWriter;
@@ -47,12 +48,13 @@ public class GivenWhenThenLoggingITest extends WithJetty {
                 log().all().
                 body("fullName", equalTo("John Doe"));
 
-        assertThat(writer.toString(), equalTo(String.format("HTTP/1.1 200 OK%n" +
+        // JDK differences table, header names and order
+        assertThat(writer.toString(), equalTo(ResponseLog.normalize(String.format("HTTP/1.1 200 OK%n" +
                 "Content-Type: application/json;charset=utf-8%n" +
                 "Content-Length: 59%n" +
-                "Server: Jetty(9.4.34.v20201102)%n" +
+                "Server: Jetty(9.4.58.v20250814)%n" +
                 "%n" +
-                "{\"firstName\":\"John\",\"lastName\":\"Doe\",\"fullName\":\"John Doe\"}%n")));
+                "{\"firstName\":\"John\",\"lastName\":\"Doe\",\"fullName\":\"John Doe\"}%n"))));
     }
 
     @Test
@@ -85,8 +87,9 @@ public class GivenWhenThenLoggingITest extends WithJetty {
                 body("fullName", equalTo("John Doe"));
 
 
-        assertThat(writer.toString(), equalTo(String.format("Content-Type: application/json;charset=utf-8%n" +
+        // JDK differences table, header names and order
+        assertThat(writer.toString(), equalTo(ResponseLog.normalize(String.format("Content-Type: application/json;charset=utf-8%n" +
                 "Content-Length: 59%n" +
-                "Server: Jetty(9.4.34.v20201102)%n")));
+                "Server: Jetty(9.4.58.v20250814)%n"))));
     }
 }

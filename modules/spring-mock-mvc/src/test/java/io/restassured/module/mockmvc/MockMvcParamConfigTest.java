@@ -17,9 +17,11 @@
 package io.restassured.module.mockmvc;
 
 import io.restassured.module.mockmvc.http.MultiValueController;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+
+import org.junit.jupiter.api.BeforeEach;
+
+import org.junit.jupiter.api.Test;
 
 import static io.restassured.config.ParamConfig.UpdateStrategy.REPLACE;
 import static io.restassured.module.mockmvc.config.MockMvcParamConfig.paramConfig;
@@ -28,12 +30,12 @@ import static org.hamcrest.Matchers.equalTo;
 
 public class MockMvcParamConfigTest {
 
-    @Before
+    @BeforeEach
     public void configureMockMvcInstance() {
         RestAssuredMockMvc.standaloneSetup(new MultiValueController());
     }
 
-    @After
+    @AfterEach
     public void restRestAssured() {
         RestAssuredMockMvc.reset();
     }
@@ -69,6 +71,17 @@ public class MockMvcParamConfigTest {
                 post("/multiValueParam").
         then().
                 body("list", equalTo("value1,value2"));
+    }
+
+    @Test public void
+    replaces_path_params_by_default() {
+        RestAssuredMockMvc.given().
+                pathParam("value", "value1").
+                pathParam("value", "value2").
+            when().
+                get("/multiValueParam/{value}").
+            then().log().all().
+                body("value", equalTo("value2"));
     }
 
     @Test public void
@@ -135,12 +148,15 @@ public class MockMvcParamConfigTest {
                 queryParam("list2", "value4").
                 formParam("list3", "value5").
                 formParam("list3", "value6").
+                pathParam("value", "value7").
+                pathParam("value", "value8").
         when().
-                post("/threeMultiValueParam").
+                post("/threeMultiValueParam/{value}").
         then().
                 body("list", equalTo("value2")).
                 body("list2", equalTo("value4")).
-                body("list3", equalTo("value6"));
+                body("list3", equalTo("value6")).
+                body("value", equalTo("value8"));
     }
 
     @Test public void

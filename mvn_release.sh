@@ -1,9 +1,28 @@
 #!/bin/bash
+
+# Default to false if SKIP_TESTS is not set
+skipTests=${SKIP_TESTS:-false}
+skipOsgi=${SKIP_OSGI:-false}
+
+if [ "$skipTests" != "true" ]; then
+  echo "To skip tests, run the script like this: SKIP_TESTS=true $(basename "$0")"
+fi
+
+if [ "$skipOsgi" != "true" ]; then
+  echo "To skip OSGi, run the script like this: SKIP_OSGI=true $(basename "$0")"
+fi
+
 read -p "Enter the version to release: " releaseVersion
-echo "Starting to relase REST Assured $releaseVersion"
+echo "Starting to release REST Assured $releaseVersion (skipTests=${skipTests})"
 
-mvn release:prepare -Prelease,dist,osgi-tests -DautoVersionSubmodules=true -Dtag=rest-assured-${releaseVersion} -DreleaseVersion=${releaseVersion} &&
-mvn release:perform -Prelease,dist,osgi-tests
+mavenArguments="-DskipTests=${skipTests} -DskipOsgiTests=${skipOsgi}"
 
-echo "Maven release of REST Assured $releaseVersion completed successfully"
+# The osgi-tests profile is always active, even with SKIP_OSGI=true, so that the
+# maven-release-plugin bumps the version of the OSGi test module along with all other modules.
+mvn release:prepare release:perform -Prelease,osgi-tests -DautoVersionSubmodules=true -Dtag=rest-assured-${releaseVersion} -DreleaseVersion=${releaseVersion} -Darguments="${mavenArguments}" &&
+git checkout rest-assured-${releaseVersion} &&
+mvn deploy -Prelease -DskipTests=true
 
+git checkout master
+
+echo "Maven release of REST Assured $releaseVersion completed"

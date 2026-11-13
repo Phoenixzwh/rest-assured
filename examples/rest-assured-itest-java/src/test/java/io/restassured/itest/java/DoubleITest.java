@@ -18,24 +18,25 @@ package io.restassured.itest.java;
 
 import io.restassured.RestAssured;
 import io.restassured.itest.java.support.WithJetty;
-import org.apache.http.HttpStatus;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+
+import org.junit.jupiter.api.BeforeEach;
+
+import org.junit.jupiter.api.Test;
 
 import static io.restassured.RestAssured.when;
 import static io.restassured.config.JsonConfig.jsonConfig;
-import static io.restassured.path.json.config.JsonPathConfig.NumberReturnType.DOUBLE;
+import static io.restassured.common.config.NumberReturnType.DOUBLE;
 import static org.hamcrest.Matchers.*;
 
 public class DoubleITest extends WithJetty {
 
-    @After public void
+    @AfterEach public void
     rest_assured_is_reset_after_each_test() {
         RestAssured.reset();
     }
 
-    @Before public void
+    @BeforeEach public void
     given_rest_assured_is_configured_with_double_as_return_type() {
         RestAssured.config = RestAssured.config().jsonConfig(jsonConfig().numberReturnType(DOUBLE));
     }
@@ -53,7 +54,7 @@ public class DoubleITest extends WithJetty {
         when().
                 get("/anonymous_list_with_numbers").
         then().
-                statusCode(HttpStatus.SC_OK).
+                statusCode(200).
                 body("$", hasItems(100, 50, 31.0d));
     }
 

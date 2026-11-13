@@ -23,9 +23,9 @@ import io.restassured.module.mockmvc.http.BasePathController;
 import io.restassured.module.mockmvc.http.GreetingController;
 import io.restassured.module.mockmvc.http.PostController;
 import org.apache.commons.io.output.WriterOutputStream;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.io.PrintStream;
 import java.io.StringWriter;
@@ -33,21 +33,22 @@ import java.io.StringWriter;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.emptyString;
 import static org.hamcrest.Matchers.equalTo;
-import static org.junit.Assert.fail;
+import static org.hamcrest.Matchers.startsWith;
+import static org.junit.jupiter.api.Assertions.fail;
 
 // @formatter:off
 public class RequestLoggingTest {
     private StringWriter writer;
 
-    @Before public void
-    given_config_is_stored_in_writer() {
+    @BeforeEach
+    public void given_config_is_stored_in_writer() {
         writer = new StringWriter();
         PrintStream captor = new PrintStream(new WriterOutputStream(writer), true);
         RestAssuredMockMvc.config = new RestAssuredMockMvcConfig().logConfig(new LogConfig(captor, true));
     }
 
-    @After public void
-    reset_rest_assured() throws Exception {
+    @AfterEach
+    public void reset_rest_assured() {
         RestAssured.reset();
     }
 
@@ -148,6 +149,31 @@ public class RequestLoggingTest {
                 "Multiparts:\t\t<none>%n" +
                 "Body:%n" +
                 "a string%n")));
+    }
+
+    @Test public void
+    can_supply_byte_array_as_body_for_post() {
+        RestAssuredMockMvc.given().
+                standaloneSetup(new PostController()).
+                log().all(false).
+                body(new byte[] {'B', 'O', 'D', 'Y'}).
+                when().
+                post("/stringBody").
+                then().
+                body(equalTo("BODY"));
+
+        assertThat(writer.toString(), startsWith(String.format("Request method:\tPOST%n" +
+                "Request URI:\thttp://localhost:8080/stringBody%n" +
+                "Proxy:\t\t\t<none>%n" +
+                "Request params:\t<none>%n" +
+                "Query params:\t<none>%n" +
+                "Form params:\t<none>%n" +
+                "Path params:\t<none>%n" +
+                "Headers:\t\t<none>%n" +
+                "Cookies:\t\t<none>%n" +
+                "Multiparts:\t\t<none>%n" +
+                "Body:%n" +
+                "[B@")));
     }
 
     @Test public void

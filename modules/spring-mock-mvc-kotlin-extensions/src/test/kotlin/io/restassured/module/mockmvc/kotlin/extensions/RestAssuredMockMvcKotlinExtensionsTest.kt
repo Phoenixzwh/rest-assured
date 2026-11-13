@@ -1,9 +1,11 @@
 package io.restassured.module.mockmvc.kotlin.extensions
 
 import io.restassured.module.mockmvc.RestAssuredMockMvc
+import io.restassured.module.mockmvc.RestAssuredMockMvcClient
 import org.assertj.core.api.Assertions.assertThat
 import org.hamcrest.Matchers
-import org.junit.Test
+import org.junit.jupiter.api.Test;
+
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 
 /*
@@ -77,6 +79,27 @@ class RestAssuredMockMvcKotlinExtensionsTest {
         val id: Int =
         Given {
             standaloneSetup(GreetingController())
+            param("name", "Johan")
+        } When {
+            get("/greeting")
+        } Then {
+            body(
+                "id", Matchers.equalTo(1),
+                "content", Matchers.equalTo("Hello, Johan!")
+            )
+        } Extract {
+            path("id")
+        }
+
+        assertThat(id).isEqualTo(1)
+    }
+
+    @Test
+    fun uses_the_client_named_in_given() {
+        val client = RestAssuredMockMvcClient.builder().standaloneSetup(GreetingController()).build()
+
+        val id: Int =
+        Given(client) {
             param("name", "Johan")
         } When {
             get("/greeting")

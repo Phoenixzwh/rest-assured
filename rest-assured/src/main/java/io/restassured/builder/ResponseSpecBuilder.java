@@ -26,17 +26,17 @@ import io.restassured.internal.ResponseSpecificationImpl;
 import io.restassured.internal.SpecificationMerger;
 import io.restassured.internal.log.LogRepository;
 import io.restassured.matcher.DetailedCookieMatcher;
+import io.restassured.matcher.ResponseAwareMatcher;
 import io.restassured.parsing.Parser;
+import io.restassured.response.Response;
 import io.restassured.specification.Argument;
 import io.restassured.specification.ResponseSpecification;
 import org.hamcrest.Matcher;
 
-import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-import static io.restassured.RestAssured.rootPath;
 import static io.restassured.internal.common.assertion.AssertParameter.notNull;
 
 /**
@@ -45,7 +45,7 @@ import static io.restassured.internal.common.assertion.AssertParameter.notNull;
  * ResponseSpecification responseSpec = new ResponseSpecBuilder().expectStatusCode(200).build();
  * RequestSpecification requestSpec = new RequestSpecBuilder().addParam("parameter1", "value1").build();
  *
- * given(responseSpec, requestSpec).post("/something");
+ * given(requestSpec, responseSpec).post("/something");
  * </pre>
  * <p/>
  * or
@@ -58,12 +58,23 @@ import static io.restassured.internal.common.assertion.AssertParameter.notNull;
  * when().
  *        get("/something");
  * </pre>
+ * <p>
+ * The builder doesn't read the static settings of {@link RestAssured}, such as {@link RestAssured#rootPath}, the
+ * registered parsers, {@link RestAssured#defaultParser} or {@link RestAssured#config}. Those of the request or response
+ * that the specification is used with apply, as they are at that time, and the ones set on the builder take precedence.
+ * For example, the body expectations of a builder without a root path use the root path of
+ * <code>RestAssured.rootPath</code>, of <code>expect().rootPath(..)</code> or of a
+ * {@link io.restassured.RestAssuredClient}.
+ * </p>
  */
 public class ResponseSpecBuilder {
     private final ResponseSpecification spec;
 
+    /**
+     * Starts with no root path, parsers or default parser of its own.
+     */
     public ResponseSpecBuilder() {
-        spec = new ResponseSpecificationImpl(rootPath, null, getResponseParserRegistrar(), restAssuredConfig(), new LogRepository());
+        spec = new ResponseSpecificationImpl(null, null, new ResponseParserRegistrar(), new RestAssuredConfig(), new LogRepository());
     }
 
     /**
@@ -160,6 +171,28 @@ public class ResponseSpecBuilder {
      */
     public ResponseSpecBuilder expectHeader(String headerName, String expectedValue) {
         spec.header(headerName, expectedValue);
+        return this;
+    }
+
+    /**
+     * Expect that a response header matches the supplied header name and {@link ResponseAwareMatcher}.
+     * <p>
+     * E.g. expect that the response of the POST request to "/redirect" contains a Location header that ends with
+     * the id returned in the response body:
+     * <pre>
+     * ResponseSpecification responseSpec = new ResponseSpecBuilder()
+     *     .expectHeader("Location", response -> endsWith("/redirect/" + response.path("id")))
+     *     .build();
+     * </pre>
+     * </p>
+     *
+     * @param headerName           The name of the expected header
+     * @param expectedValueMatcher The {@link ResponseAwareMatcher} that creates the Hamcrest matcher based on the response
+     * @return The builder
+     * @see ResponseSpecification#header(String, ResponseAwareMatcher)
+     */
+    public ResponseSpecBuilder expectHeader(String headerName, ResponseAwareMatcher<Response> expectedValueMatcher) {
+        spec.header(headerName, expectedValueMatcher);
         return this;
     }
 
@@ -316,10 +349,10 @@ public class ResponseSpecBuilder {
      *
      * @param rootPath  The root path to use.
      * @param arguments The arguments.
-     * @see ResponseSpecification#root(String, java.util.List)
+     * @see ResponseSpecification#rootPath(String, java.util.List)
      */
     public ResponseSpecBuilder rootPath(String rootPath, List<Argument> arguments) {
-        spec.root(rootPath, arguments);
+        spec.rootPath(rootPath, arguments);
         return this;
     }
 
@@ -329,7 +362,7 @@ public class ResponseSpecBuilder {
      * <p/>
      * <pre>
      * expect().
-     *          root("x.y").
+     *          rootPath("x.y").
      *          body("age", is(..)).
      *          body("gender", is(..)).
      *          body("name.firstName", is(..)).
@@ -341,10 +374,10 @@ public class ResponseSpecBuilder {
      * you can use a append root and do:
      * <pre>
      * expect().
-     *          root("x.y").
+     *          rootPath("x.y").
      *          body("age", is(..)).
      *          body("gender", is(..)).
-     *          appendRoot("name").
+     *          appendRootPath("name").
      *          body("firstName", is(..)).
      *          body("lastName", is(..)).
      * when().
@@ -366,7 +399,7 @@ public class ResponseSpecBuilder {
      * <pre>
      * String namePath = "name";
      * expect().
-     *          root("x.y").
+     *          rootPath("x.y").
      *          body("age", is(..)).
      *          body("gender", is(..)).
      *          body(namePath + "first", is(..)).
@@ -379,10 +412,10 @@ public class ResponseSpecBuilder {
      * <pre>
      * String namePath = "name";
      * expect().
-     *          root("x.y").
+     *          rootPath("x.y").
      *          body("age", is(..)).
      *          body("gender", is(..)).
-     *          appendRoot("%s", withArgs(namePath)).
+     *          appendRootPath("%s", withArgs(namePath)).
      *          body("first", is(..)).
      *          body("last", is(..)).
      * when().
@@ -402,10 +435,10 @@ public class ResponseSpecBuilder {
      * <p/>
      * <pre>
      * expect().
-     *          root("x.y").
+     *          rootPath("x.y").
      *          body("firstName", is(..)).
      *          body("lastName", is(..)).
-     *          noRoot()
+     *          noRootPath()
      *          body("z.something1", is(..)).
      *          body("w.something2", is(..)).
      * when().
@@ -429,10 +462,10 @@ public class ResponseSpecBuilder {
      * when().
      *          get(..);
      * then().
-     *          root("x.y").
+     *          rootPath("x.y").
      *          body("age", is(..)).
      *          body("gender", is(..)).
-     *          root("x").
+     *          rootPath("x").
      *          body("firstName", is(..)).
      *          body("lastName", is(..)).
      * </pre>
@@ -442,10 +475,10 @@ public class ResponseSpecBuilder {
      * when().
      *          get(..);
      * then().
-     *          root("x.y").
+     *          rootPath("x.y").
      *          body("age", is(..)).
      *          body("gender", is(..)).
-     *          detachRoot("y").
+     *          detachRootPath("y").
      *          body("firstName", is(..)).
      *          body("lastName", is(..)).
      * </pre>
@@ -543,7 +576,7 @@ public class ResponseSpecBuilder {
      * or if you have complex root paths and don't wish to duplicate the path for small variations:
      * <pre>
      * expect().
-     *          root("filters.filterConfig[%d].filterConfigGroups.find { it.name == 'Gold' }.includes").
+     *          rootPath("filters.filterConfig[%d].filterConfigGroups.find { it.name == 'Gold' }.includes").
      *          body(withArgs(0), hasItem("first")).
      *          body(withArgs(1), hasItem("second")).
      *          ..
@@ -567,10 +600,11 @@ public class ResponseSpecBuilder {
 
     /**
      * Merge this builder with settings from another specification. Note that the supplied specification
-     * can overwrite data in the current specification. The following settings are overwritten:
+     * can overwrite data in the current specification. The following settings are overwritten when the supplied
+     * specification sets them, and otherwise kept:
      * <ul>
      * <li>Content type</li>
-     * <li>Root path</
+     * <li>Root path</li>
      * <li>Status code</li>
      * <li>Status line</li>
      * </ul>
@@ -653,7 +687,18 @@ public class ResponseSpecBuilder {
     }
 
     /**
-     * Build the response specification.
+     * Build the response specification. Use it with {@link ResponseSpecification#spec(ResponseSpecification)} (e.g.
+     * <code>given().spec(requestSpec).expect().spec(responseSpec)</code>),
+     * {@link io.restassured.response.ValidatableResponseOptions#spec(ResponseSpecification)} (e.g.
+     * <code>then().spec(responseSpec)</code>) or
+     * {@link io.restassured.RestAssured#given(io.restassured.specification.RequestSpecification, ResponseSpecification)}, e.g.
+     * <pre>
+     * ResponseSpecification responseSpec = new ResponseSpecBuilder().expectStatusCode(200).build();
+     *
+     * given().spec(requestSpec).when().get("/something").then().spec(responseSpec);
+     * </pre>
+     * Defining or sending a request (e.g. <code>responseSpec.when().get("/something")</code> or
+     * <code>responseSpec.given()</code>) directly from the built specification throws an {@link IllegalStateException}.
      *
      * @return The assembled response specification
      */
@@ -661,26 +706,30 @@ public class ResponseSpecBuilder {
         return spec;
     }
 
-    private ResponseParserRegistrar getResponseParserRegistrar() {
-        ResponseParserRegistrar rpr;
-        Field registrarField = null;
-        try {
-            registrarField = RestAssured.class.getDeclaredField("RESPONSE_PARSER_REGISTRAR");
-            try {
-                registrarField.setAccessible(true);
-                rpr = (ResponseParserRegistrar) registrarField.get(RestAssured.class);
-            } catch (IllegalAccessException e) {
-                throw new RuntimeException(e);
-            }
-        } catch (NoSuchFieldException e) {
-            throw new RuntimeException(e);
-        } finally {
-            registrarField.setAccessible(false);
-        }
-        return new ResponseParserRegistrar(rpr);
-    }
-
-    private RestAssuredConfig restAssuredConfig() {
-        return RestAssured.config == null ? new RestAssuredConfig() : RestAssured.config;
+    /**
+     * Set the configuration that this response specification validates with. Each configuration type that you have
+     * configured in it, such as {@code jsonConfig().pathEngine(JsonPathEngine.JAYWAY)}, takes precedence over the one of
+     * the request and of {@link RestAssured#config} when the specification is used, for example with
+     * {@code then().spec(..)}, {@code expect().spec(..)} or {@code given(requestSpecification, responseSpecification)}.
+     * The merge works per configuration type, so the specification's {@code JsonConfig} replaces the request's whole
+     * {@code JsonConfig}, including a {@code numberReturnType} set globally. Configure everything you need of a type here.
+     * <p>
+     * A {@code LogConfig} with {@code enableLoggingOfRequestAndResponseIfValidationFails()} logs the request and the
+     * response when validation fails, with {@code expect().spec(..)} or
+     * {@code given(requestSpecification, responseSpecification)}. With {@code then().spec(..)}, which comes after the
+     * request is sent, only the response is logged.
+     * </p>
+     * For example:
+     * <pre>
+     * ResponseSpecification spec = new ResponseSpecBuilder().setConfig(config().jsonConfig(jsonConfig().pathEngine(JsonPathEngine.JAYWAY)))
+     *         .expectBody("$.store.book[*].author", hasItem("Herman Melville")).build();
+     * </pre>
+     *
+     * @param config The configuration, or {@code null} for none.
+     * @return The builder
+     */
+    public ResponseSpecBuilder setConfig(RestAssuredConfig config) {
+        ((ResponseSpecificationImpl) spec).setSpecificationConfig(config);
+        return this;
     }
 }

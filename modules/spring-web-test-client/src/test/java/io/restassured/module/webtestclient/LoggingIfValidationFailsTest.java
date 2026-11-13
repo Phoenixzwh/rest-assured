@@ -24,9 +24,11 @@ import io.restassured.module.webtestclient.setup.PostController;
 import io.restassured.module.webtestclient.specification.WebTestClientRequestSpecBuilder;
 import org.apache.commons.io.output.WriterOutputStream;
 import org.json.JSONException;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+
+import org.junit.jupiter.api.BeforeEach;
+
+import org.junit.jupiter.api.Test;
 import org.skyscreamer.jsonassert.JSONAssert;
 import org.springframework.web.util.UriUtils;
 
@@ -41,21 +43,20 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 import static org.hamcrest.core.StringContains.containsString;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class LoggingIfValidationFailsTest {
 
 	private StringWriter writer;
 	private PrintStream captor;
 
-	@Before
-	public void
+	@BeforeEach	public void
 	given_writer_and_captor_is_initialized() {
 		writer = new StringWriter();
 		captor = new PrintStream(new WriterOutputStream(writer, defaultCharset()), true);
 	}
 
-	@After
+	@AfterEach
 	public void
 	reset_rest_assured() {
 		RestAssuredWebTestClient.reset();
@@ -95,7 +96,7 @@ public class LoggingIfValidationFailsTest {
 							"Body:\t\t\t<none>%n" +
 							"%n" +
 							"200%n" +
-							"Content-Type: application/json;charset=UTF-8%n" +
+							"Content-Type: application/json%n" +
 							"Content-Length: 34%n" +
 							"%n",
 					config().getEncoderConfig().defaultContentCharset());
@@ -140,7 +141,7 @@ public class LoggingIfValidationFailsTest {
 					"Body:\t\t\t<none>%n" +
 					"%n" +
 					"200%n" +
-					"Content-Type: application/json;charset=UTF-8%n" +
+					"Content-Type: application/json%n" +
 					"Content-Length: 34%n" +
 					"%n"
 			);
@@ -174,7 +175,7 @@ public class LoggingIfValidationFailsTest {
 			assertThat(writer.toString(), equalTo(String.format("" +
 							"Headers:\t\tContent-Type=application/x-www-form-urlencoded;charset=%s%n" +
 							"%n" +
-							"Content-Type: application/json;charset=UTF-8%n" +
+							"Content-Type: application/json%n" +
 							"Content-Length: 34%n",
 					config().getEncoderConfig().defaultContentCharset())));
 		}
@@ -208,7 +209,7 @@ public class LoggingIfValidationFailsTest {
 			assertThat(writer.toString(), equalTo(String.format("Headers:\t\tApi-Key=1234%n" +
 							"\t\t\t\tContent-Type=application/x-www-form-urlencoded;charset=%s%n" +
 							"%n" +
-							"Content-Type: application/json;charset=UTF-8%n" +
+							"Content-Type: application/json%n" +
 							"Content-Length: 34%n",
 					RestAssuredWebTestClientConfig.config().getEncoderConfig().defaultContentCharset())
 			));

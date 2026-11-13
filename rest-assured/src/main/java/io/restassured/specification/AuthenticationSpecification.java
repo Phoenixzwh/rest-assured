@@ -43,7 +43,10 @@ public interface AuthenticationSpecification {
     RequestSpecification ntlm(String userName, String password, String workstation, String domain);
 
     /**
-     * Use http digest authentication.
+     * Use http digest authentication. The credentials are only sent in answer to a Digest challenge from the server
+     * (<code>WWW-Authenticate: Digest ..</code>). A server that only asks for Basic authentication doesn't get them, so
+     * the password is never sent in clear text, and the request returns the server's 401 response. Use
+     * {@link #basic(String, String)} to answer both Basic and Digest challenges.
      *
      * @param userName The user name.
      * @param password The password.
@@ -76,13 +79,18 @@ public interface AuthenticationSpecification {
      * Sets a certificate to be used for SSL authentication. See {@link java.lang.Class#getResource(String)}
      * for how to get a URL from a resource on the classpath.
      * <p>
+     * The file at <code>certURL</code> is used both as key store and as trust store: the client certificate (and its
+     * private key) in it is sent to servers that ask for one, and the server's certificate must be trusted by one of
+     * the certificates in it.
+     * </p>
+     * <p>
      * Uses keystore: <code>KeyStore.getDefaultType()</code>.<br/>
      * Uses port: 443<br/>
      * Uses keystore provider: <code>none</code><br/>
      * </p>
      *
-     * @param certURL  URL to a JKS keystore where the certificate is stored.
-     * @param password password to decrypt the keystore
+     * @param certURL  URL to a key store (for example a JKS or PKCS12 file) with the client certificate, also used as trust store.
+     * @param password password to decrypt the key store and its private key
      * @return The request io.restassured.specification
      */
     RequestSpecification certificate(String certURL, String password);
@@ -90,16 +98,22 @@ public interface AuthenticationSpecification {
     /**
      * Sets a certificate to be used for SSL authentication. See {@link Class#getResource(String)} for how to get a URL from a resource
      * on the classpath.
-     * <p/>
+     * <p>
+     * The file at <code>certURL</code> is used both as key store and as trust store: the client certificate (and its
+     * private key) in it is sent to servers that ask for one, and the server's certificate must be trusted by one of
+     * the certificates in it. A key store or trust store given with
+     * {@link CertificateAuthSettings#keyStore(java.security.KeyStore)} or {@link CertificateAuthSettings#trustStore(java.security.KeyStore)}
+     * is used instead of the file for that purpose.
+     * </p>
      *
-     * @param certURL                 URL to a JKS keystore where the certificate is stored.
-     * @param password                The password for the keystore
+     * @param certURL                 URL to a key store (for example a JKS or PKCS12 file) with the client certificate, also used as trust store.
+     * @param password                The password for the key store and its private key
      * @param certificateAuthSettings More advanced settings for the certificate authentication
      */
     RequestSpecification certificate(String certURL, String password, CertificateAuthSettings certificateAuthSettings);
 
     /**
-     * OAuth2 sign the request. Note that this currently does not wait for a WWW-Authenticate challenge before sending the the OAuth header
+     * OAuth2 sign the request. Note that this currently does not wait for a WWW-Authenticate challenge before sending the OAuth header
      * (so currently it's the same as preemptive oauth2 authentication. The reason why it's located here is to be backward compatible).
      * This assumes you've already generated an accessToken for the site you're targeting. The access token will be put in a header.
      *
@@ -109,21 +123,28 @@ public interface AuthenticationSpecification {
     RequestSpecification oauth2(String accessToken);
 
     /**
-     * OAuth2 sign the request. Note that this currently does not wait for a WWW-Authenticate challenge before sending the the OAuth header.
+     * OAuth2 sign the request. Note that this currently does not wait for a WWW-Authenticate challenge before sending the OAuth header.
      * This assumes you've already generated an accessToken for the site you're targeting.
+     * <p>
+     * With {@link OAuthSignature#HEADER} the access token is sent as a bearer token in the <code>Authorization</code> header,
+     * like {@link #oauth2(String)}. With {@link OAuthSignature#QUERY_STRING} it's added to the request URI as the
+     * <code>access_token</code> query parameter (RFC 6750, section 2.3) and no <code>Authorization</code> header is sent.
+     * The query parameter isn't added to a redirect to another host, unless
+     * {@link io.restassured.config.RedirectConfig#stripSensitiveHeadersOnCrossHostRedirect(boolean)} is turned off.
+     * </p>
      *
      * @param accessToken The access token
-     * @param signature   The signature (note that if using {@link OAuthSignature#QUERY_STRING} then <code>Scribe</code> must be added to the classpath)
+     * @param signature   Where to send the access token
      * @return The request io.restassured.specification
      */
     RequestSpecification oauth2(String accessToken, OAuthSignature signature);
 
     /**
      * Excerpt from the HttpBuilder docs:<br>
-     * OAuth sign the request. Note that this currently does not wait for a WWW-Authenticate challenge before sending the the OAuth header.
+     * OAuth sign the request. Note that this currently does not wait for a WWW-Authenticate challenge before sending the OAuth header.
      * All requests to all domains will be signed for this instance.
      * This assumes you've already generated an accessToken and secretToken for the site you're targeting.
-     * For more information on how to achieve this, see the <a href='https://github.com/fernandezpablo85/scribe-java/wiki/Getting-Started'>Scribe documentation</a>.</p>
+     * REST Assured signs the request itself with HMAC-SHA1 (<a href="https://www.rfc-editor.org/rfc/rfc5849">RFC 5849</a>), so no OAuth library is needed.
      *
      * @param consumerKey
      * @param consumerSecret
@@ -135,10 +156,10 @@ public interface AuthenticationSpecification {
 
     /**
      * Excerpt from the HttpBuilder docs:<br>
-     * OAuth sign the request. Note that this currently does not wait for a WWW-Authenticate challenge before sending the the OAuth header.
+     * OAuth sign the request. Note that this currently does not wait for a WWW-Authenticate challenge before sending the OAuth header.
      * All requests to all domains will be signed for this instance.
      * This assumes you've already generated an accessToken and secretToken for the site you're targeting.
-     * For more information on how to achieve this, see the <a href='https://github.com/fernandezpablo85/scribe-java/wiki/Getting-Started'>Scribe documentation</a>.</p>
+     * REST Assured signs the request itself with HMAC-SHA1 (<a href="https://www.rfc-editor.org/rfc/rfc5849">RFC 5849</a>), so no OAuth library is needed.
      *
      * @param consumerKey
      * @param consumerSecret
@@ -158,7 +179,7 @@ public interface AuthenticationSpecification {
     PreemptiveAuthSpec preemptive();
 
     /**
-     * Explicitly state that you don't which to use any authentication in this request. This is useful only in cases where you've
+     * Explicitly state that you don't wish to use any authentication in this request. This is useful only in cases where you've
      * specified a default authentication scheme and you wish to override it for a single request.
      *
      * @return The Request specification

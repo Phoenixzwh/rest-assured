@@ -22,7 +22,10 @@ import org.springframework.test.web.servlet.MockMvcBuilder;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.test.web.servlet.setup.AbstractMockMvcBuilder;
 import org.springframework.test.web.servlet.setup.ConfigurableMockMvcBuilder;
+import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.test.web.servlet.setup.MockMvcConfigurer;
+import org.springframework.test.web.servlet.setup.StandaloneMockMvcBuilder;
 import org.springframework.web.context.WebApplicationContext;
 
 import java.lang.reflect.Field;
@@ -46,10 +49,24 @@ public class MockMvcFactory {
         this.mockMvc = mockMvc;
     }
 
+    /**
+     * @return A factory of a {@link MockMvc} of a fully initialized web application context, with these configurers
+     * applied
+     */
+    public static MockMvcFactory webAppContextSetup(WebApplicationContext context, MockMvcConfigurer... mockMvcConfigurers) {
+        DefaultMockMvcBuilder builder = MockMvcBuilders.webAppContextSetup(context);
+        if (mockMvcConfigurers != null) {
+            for (MockMvcConfigurer mockMvcConfigurer : mockMvcConfigurers) {
+                builder.apply(mockMvcConfigurer);
+            }
+        }
+        return new MockMvcFactory(builder);
+    }
+
     public synchronized MockMvc build(final MockMvcConfig config) {
         final MockMvc mockMvcToReturn;
         if (!isAssigned()) {
-            throw new IllegalStateException("You haven't configured a MockMVC instance. You can do this statically\n\nRestAssuredMockMvc.mockMvc(..)\nRestAssuredMockMvc.standaloneSetup(..);\nRestAssuredMockMvc.webAppContextSetup(..);\n\nor using the DSL:\n\ngiven().\n\t\tmockMvc(..). ..\n");
+            throw new IllegalStateException("You haven't configured a MockMVC instance. You can do this statically\n\nRestAssuredMockMvc.mockMvc(..)\nRestAssuredMockMvc.standaloneSetup(..);\nRestAssuredMockMvc.webAppContextSetup(..);\n\nor using the DSL:\n\ngiven().\n\t\tmockMvc(..). ..\n\nor on a client:\n\nRestAssuredMockMvcClient.builder().\n\t\tmockMvc(..). ..\n\nor, for a specification built by MockMvcRequestSpecBuilder that is sent on its own, on the builder:\n\nnew MockMvcRequestSpecBuilder().\n\t\tsetMockMvc(..). ..\n");
         } else if (mockMvc instanceof MockMvc) {
             mockMvcToReturn = (MockMvc) this.mockMvc;
         } else if (mockMvc instanceof AbstractMockMvcBuilder) {
@@ -73,7 +90,7 @@ public class MockMvcFactory {
                 // End avoid duplicates
                 if (isOkToAdd) {
                     final MockMvcConfigurer configurer = org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity();
-                    builder.apply(new ConditionalSpringMockMvcConfigurer(configurer));
+                    builder.apply(new ConditionalSpringMockMvcConfigurer(builder instanceof StandaloneMockMvcBuilder, configurer));
                 }
             }
             mockMvcToReturn = builder.build();
@@ -111,14 +128,18 @@ public class MockMvcFactory {
      */
     private static class ConditionalSpringMockMvcConfigurer implements MockMvcConfigurer {
         private static final String SPRING_SECURITY_FILTER_CHAIN = "springSecurityFilterChain";
+        private final boolean isStandaloneSetup;
         private final MockMvcConfigurer configurer;
 
-        public ConditionalSpringMockMvcConfigurer(MockMvcConfigurer configurer) {
+        public ConditionalSpringMockMvcConfigurer(boolean isStandaloneSetup, MockMvcConfigurer configurer) {
+            this.isStandaloneSetup = isStandaloneSetup;
             this.configurer = configurer;
         }
 
         public void afterConfigurerAdded(ConfigurableMockMvcBuilder<?> builder) {
-            configurer.afterConfigurerAdded(builder);
+            if (!isStandaloneSetup) {
+                configurer.afterConfigurerAdded(builder);
+            }
         }
 
         public RequestPostProcessor beforeMockMvcCreated(ConfigurableMockMvcBuilder<?> builder, WebApplicationContext context) {

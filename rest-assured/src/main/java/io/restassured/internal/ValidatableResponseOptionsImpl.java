@@ -16,10 +16,10 @@
 
 package io.restassured.internal;
 
-import io.restassured.RestAssured;
 import io.restassured.config.LogConfig;
 import io.restassured.config.RestAssuredConfig;
 import io.restassured.filter.log.LogDetail;
+import io.restassured.internal.client.ResponseDefaults;
 import io.restassured.http.ContentType;
 import io.restassured.internal.log.LogRepository;
 import io.restassured.internal.print.ResponsePrinter;
@@ -49,11 +49,23 @@ public abstract class ValidatableResponseOptionsImpl<T extends ValidatableRespon
     protected final Response response;
     private final RestAssuredConfig config;
 
+    /**
+     * Validates with {@link io.restassured.RestAssured#rootPath} and {@link io.restassured.RestAssured#responseSpecification}
+     */
     public ValidatableResponseOptionsImpl(ResponseParserRegistrar rpr, RestAssuredConfig config, Response response,
                                           ExtractableResponse<R> extractableResponse, LogRepository logRepository) {
+        this(rpr, config, response, extractableResponse, logRepository, ResponseDefaults.ofStaticFields());
+    }
+
+    /**
+     * @param responseDefaults The root path and default response specification to validate with
+     */
+    public ValidatableResponseOptionsImpl(ResponseParserRegistrar rpr, RestAssuredConfig config, Response response,
+                                          ExtractableResponse<R> extractableResponse, LogRepository logRepository, ResponseDefaults responseDefaults) {
         this.config = config == null ? RestAssuredConfig.config() : config;
         this.response = response;
-        responseSpec = new ResponseSpecificationImpl(RestAssured.rootPath, RestAssured.responseSpecification, rpr, this.config, response, logRepository);
+        responseSpec = new ResponseSpecificationImpl(responseDefaults.rootPath(), responseDefaults.responseSpecification(), rpr, this.config, response,
+                logRepository);
         this.extractableResponse = extractableResponse;
     }
 
@@ -176,24 +188,6 @@ public abstract class ValidatableResponseOptionsImpl<T extends ValidatableRespon
     }
 
 
-    public T root(String rootPath, List<Argument> arguments) {
-        responseSpec.root(rootPath, arguments);
-        return (T) this;
-    }
-
-
-    public T root(String rootPath) {
-        responseSpec.rootPath(rootPath);
-        return (T) this;
-    }
-
-
-    public T noRoot() {
-        responseSpec.noRootPath();
-        return (T) this;
-    }
-
-
     public T noRootPath() {
         responseSpec.noRootPath();
         return (T) this;
@@ -270,15 +264,26 @@ public abstract class ValidatableResponseOptionsImpl<T extends ValidatableRespon
 
         // The following is a work-around to enable logging of request and response if validation fails
         if (responseSpecification instanceof ResponseSpecificationImpl) {
-            ResponseSpecificationImpl impl = (ResponseSpecificationImpl) responseSpecification;
-            LogConfig globalLogConfig = responseSpec.getConfig().getLogConfig();
+            // Validates with a copy, so that the specification doesn't change and can validate from many threads. It
+            // takes the parsers and the root path of this response where it has none, as if it were merged.
+            ResponseSpecificationImpl impl = ((ResponseSpecificationImpl) responseSpecification).copyToValidate(responseSpec);
+            responseSpecification = impl;
             impl.setConfig(config);
-            if (globalLogConfig.isLoggingOfRequestAndResponseIfValidationFailsEnabled()) {
+            // Includes the config set with ResponseSpecBuilder.setConfig(..)
+            LogConfig logConfig = impl.validationConfig().getLogConfig();
+            if (logConfig.isLoggingOfRequestAndResponseIfValidationFailsEnabled()) {
+                if (!responseSpec.getConfig().getLogConfig().isLoggingOfRequestAndResponseIfValidationFailsEnabled()) {
+                    // Only the specification asks for it, so the request was sent without being logged. Log the response.
+                    if (responseSpec.getLogRepository() == null) {
+                        // Such as a response from ResponseBuilder
+                        responseSpec.setLogRepository(new LogRepository());
+                    }
+                    ifValidationFails(logConfig.logDetailOfRequestAndResponseIfValidationFails(), logConfig.isPrettyPrintingEnabled());
+                }
                 impl.setLogRepository(responseSpec.getLogRepository());
             }
             if (impl.getLogDetail() != null) {
-                logResponse(impl.getLogDetail(), globalLogConfig.isPrettyPrintingEnabled(),
-                        globalLogConfig.defaultStream());
+                logResponse(impl.getLogDetail(), logConfig.isPrettyPrintingEnabled(), logConfig.defaultStream());
             }
 
         }
@@ -407,6 +412,11 @@ public abstract class ValidatableResponseOptionsImpl<T extends ValidatableRespon
 
     public T time(Matcher<Long> matcher, TimeUnit timeUnit) {
         responseSpec.time(matcher, timeUnit);
+        return (T) this;
+    }
+
+    public T onFailMessage(String message) {
+        responseSpec.onFailMessage(message);
         return (T) this;
     }
 

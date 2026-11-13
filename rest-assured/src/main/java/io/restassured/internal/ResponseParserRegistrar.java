@@ -67,6 +67,10 @@ public class ResponseParserRegistrar {
         additional.put(contentTypeWithoutCharset, parser.getContentType());
     }
 
+    public Parser getDefaultParser() {
+        return defaultParser;
+    }
+
     public void registerDefaultParser(Parser parser) {
         notNull(parser, "Parser");
         this.defaultParser = parser;
@@ -87,5 +91,15 @@ public class ResponseParserRegistrar {
     public boolean hasCustomParserExcludingDefaultParser(String contentType) {
         Parser parser = getNonDefaultParser(contentType);
         return parser != null && (parser == Parser.XML || parser == Parser.JSON || parser == Parser.HTML);
+    }
+
+    // Accessors for SpecificationMerger
+
+    void setDefaultParser(Parser defaultParser) {
+        this.defaultParser = defaultParser;
+    }
+
+    Map<String, String> getAdditional() {
+        return additional;
     }
 }

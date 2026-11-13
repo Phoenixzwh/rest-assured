@@ -23,12 +23,12 @@ import io.restassured.config.RestAssuredConfig;
 import io.restassured.config.SessionConfig;
 import io.restassured.filter.Filter;
 import io.restassured.filter.log.LogDetail;
-import io.restassured.filter.log.RequestLoggingFilter;
 import io.restassured.http.ContentType;
 import io.restassured.http.Cookie;
 import io.restassured.http.Cookies;
 import io.restassured.internal.RequestSpecificationImpl;
 import io.restassured.internal.SpecificationMerger;
+import io.restassured.internal.log.LogConfigRequestLoggingFilter;
 import io.restassured.internal.log.LogRepository;
 import io.restassured.mapper.ObjectMapper;
 import io.restassured.mapper.ObjectMapperType;
@@ -38,15 +38,18 @@ import io.restassured.specification.RequestSpecification;
 
 import java.io.File;
 import java.io.InputStream;
-import java.io.PrintStream;
 import java.net.URI;
 import java.security.KeyStore;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
-import static io.restassured.RestAssured.*;
+import static io.restassured.RestAssured.DEFAULT_AUTH;
+import static io.restassured.RestAssured.DEFAULT_PATH;
+import static io.restassured.RestAssured.DEFAULT_URI;
+import static io.restassured.RestAssured.DEFAULT_URL_ENCODING_ENABLED;
+import static io.restassured.RestAssured.UNDEFINED_PORT;
 import static io.restassured.internal.common.assertion.AssertParameter.notNull;
 
 /**
@@ -55,7 +58,7 @@ import static io.restassured.internal.common.assertion.AssertParameter.notNull;
  * ResponseSpecification responseSpec = new ResponseSpecBuilder().expectStatusCode(200).build();
  * RequestSpecification requestSpec = new RequestSpecBuilder().addParam("parameter1", "value1").build();
  *
- * given(responseSpec, requestSpec).post("/something");
+ * given(requestSpec, responseSpec).post("/something");
  * </pre>
  * <p/>
  * or
@@ -69,20 +72,39 @@ import static io.restassured.internal.common.assertion.AssertParameter.notNull;
  * when().
  *        get("/something");
  * </pre>
+ * <p>
+ * The builder doesn't read the static settings of {@link RestAssured}, such as {@link RestAssured#baseURI},
+ * {@link RestAssured#config}, {@link RestAssured#filters(List)} or {@link RestAssured#requestSpecification}. They apply
+ * when the specification is used, for example with <code>given().spec(requestSpec)</code>, so they're applied once, as they
+ * are at that time. With a {@link io.restassured.RestAssuredClient}, the settings of the client apply instead. To keep a
+ * value with the specification, set it on the builder, for example <code>setConfig(RestAssured.config())</code>.
+ * </p>
+ * <p>
+ * The builder uses its own config, the default one unless {@link #setConfig(RestAssuredConfig)} sets another, for what
+ * it computes while building: the body that {@link #setBody(Object)} serializes (ObjectMapperConfig and EncoderConfig),
+ * the session id name of {@link #setSessionId(String)} (SessionConfig), the update strategy of the parameters
+ * (ParamConfig), the default control name and file name of a multipart part (MultiPartConfig) and which headers
+ * overwrite each other (HeaderConfig). Merging the specification later doesn't redo them. To compute them with the
+ * static config, call <code>setConfig(RestAssured.config())</code> before those methods. The settings of {@link
+ * #log(LogDetail)} are taken from the config of the request when it's logged instead.
+ * </p>
  */
 public class RequestSpecBuilder {
 
     private static final String SSL = "SSL";
     private RequestSpecificationImpl spec;
 
+    /**
+     * Starts from the values that {@link RestAssured#reset()} sets.
+     */
     public RequestSpecBuilder() {
-        this.spec = (RequestSpecificationImpl) new RequestSpecificationImpl(baseURI, port, basePath, authentication, filters(),
-                requestSpecification, urlEncodingEnabled, config, new LogRepository(), proxy).config(RestAssured.config());
+        this.spec = new RequestSpecificationImpl(DEFAULT_URI, UNDEFINED_PORT, DEFAULT_PATH, DEFAULT_AUTH, Collections.emptyList(), null,
+                DEFAULT_URL_ENCODING_ENABLED, new RestAssuredConfig(), new LogRepository(), null, true, true);
     }
 
     /**
-     * Specify a String request body (such as e.g. JSON or XML) to be sent with the request. This works for the
-     * POST, PUT and PATCH methods only. Trying to do this for the other http methods will cause an exception to be thrown.
+     * Specify a String request body (such as e.g. JSON or XML) to be sent with the request. It is typically used with the
+     * POST, PUT, PATCH and QUERY methods.
      * <p/>
      *
      * @param body The body to send.
@@ -94,8 +116,8 @@ public class RequestSpecBuilder {
     }
 
     /**
-     * Specify a byte array request body to be sent with the request. This only works for the
-     * POST http method. Trying to do this for the other http methods will cause an exception to be thrown.
+     * Specify a byte array request body to be sent with the request. It is typically used with the
+     * POST, PUT, PATCH and QUERY methods.
      *
      * @param body The body to send.
      * @return The request specification builder
@@ -108,8 +130,7 @@ public class RequestSpecBuilder {
     /**
      * Specify an Object request content that will automatically be serialized to JSON or XML and sent with the request.
      * If the object is a primitive or <a href="http://download.oracle.com/javase/6/docs/api/java/lang/Number.html">Number</a> the object will
-     * be converted to a String and put in the request body. This works for the POST, PUT and PATCH methods only.
-     * Trying to do this for the other http methods will cause an exception to be thrown.
+     * be converted to a String and put in the request body. It is typically used with the POST, PUT, PATCH and QUERY methods.
      * <p/>
      *
      * @param object The object to serialize and send with the request
@@ -122,7 +143,7 @@ public class RequestSpecBuilder {
 
     /**
      * Specify an Object request content that will automatically be serialized to JSON or XML and sent with the request using a specific object mapper.
-     * This works for the POST, PATCH and PUT methods only. Trying to do this for the other http methods will cause an exception to be thrown.
+     * It is typically used with the POST, PUT, PATCH and QUERY methods.
      *
      * @param object The object to serialize and send with the request
      * @param mapper The object mapper
@@ -135,7 +156,7 @@ public class RequestSpecBuilder {
 
     /**
      * Specify an Object request content that will automatically be serialized to JSON or XML and sent with the request using a specific object mapper type.
-     * This works for the POST, PATCH and PUT methods only. Trying to do this for the other http methods will cause an exception to be thrown.
+     * It is typically used with the POST, PUT, PATCH and QUERY methods.
      * <p>
      * Example of use:
      * <pre>
@@ -499,13 +520,17 @@ public class RequestSpecBuilder {
     }
 
     /**
-     * Specify a keystore.
+     * Specify a key store that holds the client certificate (and its private key) to send to a server that asks for one
+     * (client certificate authentication, also known as mutual TLS). For example
      * <pre>
-     * RestAssured.keyStore("/truststore_javanet.jks", "test1234");
+     * new RequestSpecBuilder().setKeyStore("/client_keystore.p12", "test1234"). ..
      * </pre>
-     * or
+     * The key store doesn't affect which server certificates are trusted, see {@link #setTrustStore(String, String)}.
+     * <p>
+     * Host names are verified as configured in the SSL config, strictly by default, so a server certificate whose host
+     * name doesn't match the host of the request fails the request. To allow all host names, use for example
      * <pre>
-     * given().keyStore("/truststore_javanet.jks", "test1234"). ..
+     * new RequestSpecBuilder().setConfig(RestAssured.config().sslConfig(sslConfig().keyStore(pathToJks, password).allowAllHostnames())). ..
      * </pre>
      * </p>
      *
@@ -522,7 +547,7 @@ public class RequestSpecBuilder {
      * <p>
      * <h1>SSL Configuration</h1>
      * <p/>
-     * SSL should, for the most part, "just work." There are a few situations where it is not completely intuitive. You can follow the example below, or see HttpClient's SSLSocketFactory documentation for more information.
+     * SSL should, for the most part, "just work." There are a few situations where it is not completely intuitive. You can follow the example below.
      * <p/>
      * <h1>SSLPeerUnverifiedException</h1>
      * <p/>
@@ -567,6 +592,13 @@ public class RequestSpecBuilder {
      * given().trustStore("/truststore_javanet.jks", "test1234"). ..
      * </pre>
      * </p>
+     * <p>
+     * Host names are verified as configured in the SSL config, strictly by default, so a server certificate whose host
+     * name doesn't match the host of the request fails the request. To allow all host names, use for example
+     * <pre>
+     * new RequestSpecBuilder().setConfig(RestAssured.config().sslConfig(sslConfig().trustStore(pathToJks, password).allowAllHostnames())). ..
+     * </pre>
+     * </p>
      *
      * @param pathToJks The path to the JKS
      * @param password  The store pass
@@ -581,7 +613,7 @@ public class RequestSpecBuilder {
      * <p>
      * <h1>SSL Configuration</h1>
      * <p/>
-     * SSL should, for the most part, "just work." There are a few situations where it is not completely intuitive. You can follow the example below, or see HttpClient's SSLSocketFactory documentation for more information.
+     * SSL should, for the most part, "just work." There are a few situations where it is not completely intuitive. You can follow the example below.
      * <p/>
      * <h1>SSLPeerUnverifiedException</h1>
      * <p/>
@@ -624,6 +656,13 @@ public class RequestSpecBuilder {
      * or
      * <pre>
      * given().trustStore("/truststore_javanet.jks", "test1234"). ..
+     * </pre>
+     * </p>
+     * <p>
+     * Host names are verified as configured in the SSL config, strictly by default, so a server certificate whose host
+     * name doesn't match the host of the request fails the request. To allow all host names, use for example
+     * <pre>
+     * new RequestSpecBuilder().setConfig(RestAssured.config().sslConfig(sslConfig().trustStore(pathToJks, password).allowAllHostnames())). ..
      * </pre>
      * </p>
      *
@@ -678,6 +717,137 @@ public class RequestSpecBuilder {
      */
     public RequestSpecBuilder setContentType(String contentType) {
         spec.contentType(contentType);
+        return this;
+    }
+
+    /**
+     * Don't append a content-type to the request
+     */
+    public RequestSpecBuilder noContentType() {
+        spec.noContentType();
+        return this;
+    }
+
+    /**
+     * Enable Cross-site request forgery (csrf) support by specifying the path to the HTML page that contains the CSRF token.
+     * For example:
+     * <pre>
+     *     given().
+     *              csrf("/users").
+     *              formParm("firstName", "John")
+     *              formParm("lastName", "Doe")
+     *     when().
+     *              post("/users").
+     *     then().
+     *              statusCode(200);
+     * </pre>
+     * <p>
+     * This will first make a {@code GET} request to {@code /users} (due to {@code csrf("/users")}) to get an HTML page that contains the CSRF token.
+     * Rest Assured will then automatically try to find the input field that contains the CSRF token and include in the {@code POST} to {@code /users}.
+     * <p>
+     * Here's an example of what Rest Assured expects as a response for {@code GET} request to {@code /users}:
+     * <pre>
+     * &lt;html&gt;
+     * &lt;head&gt;
+     *     &lt;title&gt;Add User&lt;/title&gt;
+     * &lt;/head&gt;
+     * &lt;body&gt;
+     * &lt;form action=&quot;/users&quot; method=&quot;POST&quot;&gt;
+     *     &lt;table&gt;
+     *         &lt;tr&gt;
+     *             &lt;td&gt;First Name:&amp;nbsp;&lt;/td&gt;
+     *             &lt;td&gt;&lt;input type=&quot;text&quot; name=&quot;firstName&quot;&gt;&lt;/td&gt;
+     *         &lt;/tr&gt;
+     *         &lt;tr&gt;
+     *             &lt;td&gt;Last Name:&lt;/td&gt;
+     *             &lt;td&gt;&lt;input type=&quot;text&quot; name=&quot;lastName&quot;&gt;&lt;/td&gt;
+     *         &lt;/tr&gt;
+     *         &lt;tr&gt;
+     *             &lt;td colspan=&quot;2&quot;&gt;&lt;input name=&quot;submit&quot; type=&quot;submit&quot;/&gt;&lt;/td&gt;
+     *         &lt;/tr&gt;
+     *     &lt;/table&gt;
+     *     &lt;input type=&quot;hidden&quot; name=&quot;_csrf&quot; value=&quot;8adf2ea1-b246-40aa-8e13-a85fb7914341&quot;/&gt;
+     * &lt;/form&gt;
+     * &lt;/body&gt;
+     * &lt;/html&gt;
+     * </pre>
+     * The csrf input field name is called <code>_csrf</code>, and it'll be automatically detected by REST Assured.
+     * <p/>
+     * <b>Important:</b> When enabling csrf support then REST Assured <b>must always</b> make an additional request to the server in order to
+     * be able to include in the csrf value which will slow down the tests.
+     *
+     * @param csrfTokenPath The path (URI) to the HTML page containing the CSRF token to use in the subsequent request.
+     * @return The request specification
+     * @see #csrf(String, String)
+     */
+    RequestSpecBuilder csrf(String csrfTokenPath) {
+        spec.csrf(csrfTokenPath);
+        return this;
+    }
+
+    /**
+     * Enable Cross-site request forgery (csrf) support by specifying the path to the HTML page that contains the CSRF token as well as the name of the input field that contains the CSRF token.
+     * For example:
+     * <pre>
+     *     given().
+     *              csrf("/users", "_csrf").
+     *              formParm("firstName", "John")
+     *              formParm("lastName", "Doe")
+     *     when().
+     *              post("/users").
+     *     then().
+     *              statusCode(200);
+     * </pre>
+     * <p>
+     * This will first make a {@code GET} request to {@code /users} (due to {@code csrf("/users")}) to get an HTML page that contains the CSRF token.
+     * Rest Assured will then find the input field named {@code _csrf} that contains the CSRF token and include in the {@code POST} to {@code /users}.
+     * <p>
+     * Here's an example of what Rest Assured expects as a response for {@code GET} request to {@code /users}:
+     * <pre>
+     * &lt;html&gt;
+     * &lt;head&gt;
+     *     &lt;title&gt;Add User&lt;/title&gt;
+     * &lt;/head&gt;
+     * &lt;body&gt;
+     * &lt;form action=&quot;/users&quot; method=&quot;POST&quot;&gt;
+     *     &lt;table&gt;
+     *         &lt;tr&gt;
+     *             &lt;td&gt;First Name:&amp;nbsp;&lt;/td&gt;
+     *             &lt;td&gt;&lt;input type=&quot;text&quot; name=&quot;firstName&quot;&gt;&lt;/td&gt;
+     *         &lt;/tr&gt;
+     *         &lt;tr&gt;
+     *             &lt;td&gt;Last Name:&lt;/td&gt;
+     *             &lt;td&gt;&lt;input type=&quot;text&quot; name=&quot;lastName&quot;&gt;&lt;/td&gt;
+     *         &lt;/tr&gt;
+     *         &lt;tr&gt;
+     *             &lt;td colspan=&quot;2&quot;&gt;&lt;input name=&quot;submit&quot; type=&quot;submit&quot;/&gt;&lt;/td&gt;
+     *         &lt;/tr&gt;
+     *     &lt;/table&gt;
+     *     &lt;input type=&quot;hidden&quot; name=&quot;_csrf&quot; value=&quot;8adf2ea1-b246-40aa-8e13-a85fb7914341&quot;/&gt;
+     * &lt;/form&gt;
+     * &lt;/body&gt;
+     * &lt;/html&gt;
+     * </pre>
+     * REST Assured will include {@code 8adf2ea1-b246-40aa-8e13-a85fb7914341} as the CSRF token in the subsequent request.
+     * <p/>
+     * <b>Important:</b> When enabling csrf support then REST Assured <b>must always</b> make an additional request to the server in order to
+     * be able to include in the csrf value which will slow down the tests.
+     *
+     * @param csrfTokenPath The path (URI) to the HTML page containing the CSRF token to use in the subsequent request.
+     * @param csrfFieldName The name of the input field that contains the CSRF token.
+     * @return The request specification instance
+     * @see #csrf(String)
+     */
+    RequestSpecBuilder csrf(String csrfTokenPath, String csrfFieldName) {
+        spec.csrf(csrfTokenPath, csrfFieldName);
+        return this;
+    }
+
+    /**
+     * Disable CSRF
+     */
+    public RequestSpecBuilder disableCsrf() {
+        spec.disableCsrf();
         return this;
     }
 
@@ -915,20 +1085,28 @@ public class RequestSpecBuilder {
     }
 
     /**
-     * Merge this builder with settings from another specification. Note that the supplied specification
-     * can overwrite data in the current specification. The following settings are overwritten:
+     * Merge this builder with settings from another specification. Settings that the supplied specification
+     * only has from the defaults (such as {@link RestAssured#baseURI}, {@link RestAssured#port}, {@link RestAssured#authentication} or
+     * {@link RestAssured#requestSpecification}) are not copied. The following settings are overwritten when the supplied specification sets them:
      * <ul>
-     * <li>Port</li>
-     * <li>Authentication scheme</
-     * <li>Content type</li>
+     * <li>Base URI, base path and port</li>
+     * <li>Authentication scheme (setting it to none, for example with <code>auth().none()</code>, also removes authentication filters such as form authentication)</li>
      * <li>Request body</li>
+     * <li>Proxy</li>
+     * <li>URL encoding enabled/disabled</li>
+     * <li>Content-Type allowed/disallowed: <code>contentType(..)</code> allows it and <code>noContentType()</code> disallows it. A Content-Type set with
+     * <code>header(..)</code> doesn't count, so it doesn't undo <code>noContentType()</code> of the current specification.</li>
+     * <li>CSRF disabled (<code>disableCsrf()</code>)</li>
+     * <li>Each part of the configuration that the supplied specification configured (for example the SSL config, which holds the keystore)</li>
+     * <li>Method and path (these are only set on the specification that a filter receives)</li>
      * </ul>
      * The following settings are merged:
      * <ul>
-     * <li>Parameters</li>
-     * <li>Cookies</li>
-     * <li>Headers</li>
-     * <li>Filters</li>
+     * <li>Parameters, query parameters, form parameters and path parameters (a parameter of the supplied specification replaces one with the same name)</li>
+     * <li>Multi-part form data parameters (the same part isn't added again, but an equal part made separately is)</li>
+     * <li>Cookies (a cookie that is already present with the same value isn't added again)</li>
+     * <li>Headers (a header that is already present with the same value isn't added again, and a Content-Type or Accept header of the supplied specification replaces the current one by default, see {@link io.restassured.config.HeaderConfig})</li>
+     * <li>Filters (a filter that is already present isn't added again, and an authentication filter replaces the current ones)</li>
      * </ul>
      *
      * @param specification The specification to add
@@ -956,7 +1134,16 @@ public class RequestSpecBuilder {
     }
 
     /**
-     * Build RequestSpecBuilder.
+     * Build the request specification. Use it with {@link RestAssured#given(RequestSpecification)},
+     * {@link RequestSpecification#spec(RequestSpecification)} or
+     * {@link RestAssured#given(RequestSpecification, io.restassured.specification.ResponseSpecification)}, e.g.
+     * <pre>
+     * RequestSpecification requestSpec = new RequestSpecBuilder().addHeader("name", "value").build();
+     *
+     * given().spec(requestSpec).when().get("/something");
+     * </pre>
+     * Sending a request (e.g. <code>requestSpec.when().get("/something")</code>) or defining response expectations
+     * (e.g. <code>requestSpec.then()</code>) directly from the built specification throws an {@link IllegalStateException}.
      *
      * @return The assembled request specification
      */
@@ -1020,26 +1207,17 @@ public class RequestSpecBuilder {
     }
 
     /**
-     * Enabled logging with the specified log detail. Set a {@link LogConfig} to configure the print stream and pretty printing options.
+     * Enabled logging with the specified log detail. The print stream, pretty printing, URL encoding of the request URI and
+     * blacklisted headers are taken from the {@link LogConfig} of the request when it's logged, so the log config where
+     * the specification is used applies, for example that of {@link RestAssured#config},
+     * a {@link io.restassured.RestAssuredClient} or <code>given().config(..)</code>.
      *
      * @param logDetail The log detail.
      * @return RequestSpecBuilder
      */
     public RequestSpecBuilder log(LogDetail logDetail) {
         notNull(logDetail, LogDetail.class);
-        RestAssuredConfig restAssuredConfig = spec.getConfig();
-        LogConfig logConfig;
-        if (restAssuredConfig == null) {
-            logConfig = new RestAssuredConfig().getLogConfig();
-        } else {
-            logConfig = restAssuredConfig.getLogConfig();
-        }
-        PrintStream printStream = logConfig.defaultStream();
-        boolean prettyPrintingEnabled = logConfig.isPrettyPrintingEnabled();
-        boolean shouldUrlEncodeRequestUri = logConfig.shouldUrlEncodeRequestUri();
-        Set<String> blacklistedHeaders = logConfig.blacklistedHeaders();
-
-        spec.filter(new RequestLoggingFilter(logDetail, prettyPrintingEnabled, printStream, shouldUrlEncodeRequestUri, blacklistedHeaders));
+        spec.filter(new LogConfigRequestLoggingFilter(logDetail, null, null));
         return this;
     }
 

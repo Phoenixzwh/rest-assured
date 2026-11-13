@@ -1,0 +1,207 @@
+/*
+ * Copyright 2019 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *        http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package io.restassured.internal.path.json;
+
+import static io.restassured.internal.common.assertion.AssertionSupport.attributeGetter;
+import static io.restassured.internal.common.assertion.AssertionSupport.classKeyword;
+import static io.restassured.internal.common.assertion.AssertionSupport.escapePath;
+import static io.restassured.internal.common.assertion.AssertionSupport.generateWhitespace;
+import static io.restassured.internal.common.assertion.AssertionSupport.hyphen;
+import static io.restassured.internal.common.assertion.AssertionSupport.integer;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.util.HashMap;
+import java.util.Map;
+
+import org.apache.commons.lang3.StringUtils;
+import org.codehaus.groovy.runtime.InvokerHelper;
+
+import groovy.lang.Binding;
+import groovy.lang.GroovyClassLoader;
+import groovy.lang.MissingPropertyException;
+import groovy.lang.Script;
+import io.restassured.internal.common.assertion.Assertion;
+import io.restassured.internal.common.assertion.HyphenQuoteFragmentEscaper;
+import io.restassured.internal.common.assertion.PathFragmentEscaper;
+
+public class JSONAssertion implements Assertion {
+
+  private static final String ROOT = "restAssuredJsonRootObject";
+  private static final String SCRIPT_NAME = "Script1";
+
+  String key;
+  Map<String, Object> params;
+
+  @Override
+  public Object getResult(Object object, Object config) {
+    return getAsJsonObject(object);
+  }
+
+  @Override
+  public String description() {
+    return "JSON path";
+  }
+
+  // A path that starts with "$." or "$[", as in Jayway JsonPath, starts at the root, like "$" alone
+  private static String withoutLeadingDollar(String key) {
+    if (key.startsWith("$.") && !key.startsWith("$..")) {
+      return key.substring(2);
+    } else if (key.startsWith("$[")) {
+      return key.substring(1);
+    }
+    return key;
+  }
+
+  public void setKey(String key) {
+    this.key = key;
+  }
+
+  public void setParams(Map<String, Object> params) {
+    this.params = params;
+  }
+
+  public Object getAsJsonObject(Object object) {
+    key = withoutLeadingDollar(key);
+    key = (String) escapePath(
+        key,
+        (PathFragmentEscaper) hyphen(),
+        colon(key),
+        (PathFragmentEscaper) attributeGetter(),
+        (PathFragmentEscaper) integer(),
+        (PathFragmentEscaper) classKeyword()
+    );
+    Object result;
+
+    if ("$".equals(key) || key.isEmpty()) {
+      result = object;
+    } else {
+      try {
+        String expr;
+        // A subscript, such as [0] or ['name'], follows the root directly
+        if (key.startsWith("[")) {
+          expr = ROOT + key;
+        } else {
+          expr = ROOT + '.' + key;
+        }
+        result = eval(ROOT, object, expr);
+      } catch (MissingPropertyException e) {
+        String message = e.getMessage();
+        if (message != null && (message.startsWith("No such property:") && message.endsWith("for class: " + SCRIPT_NAME))) {
+          String error = String.format("The parameter \"%s\" was used but not defined. Define parameters using the JsonPath.param(...) function", e.getProperty());
+          throw new IllegalArgumentException(error, e);
+        }
+        // return null if exception occurred for property from json path, see #1746
+        return null;
+      } catch (Exception e) {
+        // Check if exception is due to a missing property
+        if (e instanceof NullPointerException){
+          String message = e.getMessage();
+          if (message.equals("Cannot invoke method getAt() on null object") ||
+             (message.startsWith("Cannot get property") && message.endsWith("on null object"))) {
+            return null;
+          }
+        }
+        String error = e.getMessage().replace("startup failed:", "Invalid JSON expression:").replace("$root.", generateWhitespace(ROOT.length()));
+        throw new IllegalArgumentException(error, e);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Quotes a key that contains a colon, such as {@code ErrorCode:} or {@code urn:a:b}, so that it can be read with the
+   * dot notation (#1766). A colon is also part of Groovy's ternary ({@code a ? b : c}) and Elvis ({@code a ?: b})
+   * operators and of map literals, so unlike the colon escaper used for XML namespaces, this one escapes nothing when
+   * the path contains a ternary operator, and leaves a fragment alone when it contains whitespace, a question mark, a
+   * double quote or a closure, or when the colon only occurs in a list index.
+   */
+  private static PathFragmentEscaper colon(String path) {
+    boolean pathContainsTernaryOperator = containsTernaryOperator(path);
+    return new HyphenQuoteFragmentEscaper() {
+      @Override
+      public boolean shouldEscape(String pathFragment) {
+        String fragment = pathFragment.trim();
+        return !pathContainsTernaryOperator && !fragment.startsWith("'") && !fragment.endsWith("'")
+            && StringUtils.substringBefore(fragment, "[").contains(":")
+            && !StringUtils.containsAny(fragment, '?', '"', '{', '}', '(')
+            && !StringUtils.containsWhitespace(fragment);
+      }
+    };
+  }
+
+  /**
+   * Whether the path contains a question mark outside a quoted string that isn't part of the safe navigation
+   * ({@code ?.} and {@code ?[}) or Elvis ({@code ?:}) operators. A compact ternary, such as
+   * {@code collect{it.price>10?it.title:it.price}}, is split at its dots into fragments such as {@code title:it} that
+   * contain a colon but no question mark.
+   */
+  private static boolean containsTernaryOperator(String path) {
+    char quote = 0;
+    for (int i = 0; i < path.length(); i++) {
+      char c = path.charAt(i);
+      if (quote != 0) {
+        if (c == '\\') {
+          i++;
+        } else if (c == quote) {
+          quote = 0;
+        }
+      } else if (c == '\'' || c == '"') {
+        quote = c;
+      } else if (c == '?') {
+        char next = i + 1 < path.length() ? path.charAt(i + 1) : 0;
+        if (next != '.' && next != ':' && next != '[') {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private Object eval(String root, Object object, String expr) {
+    Map<String, Object> newParams = (params != null) ? new HashMap<>(params) : new HashMap<>(1);
+    newParams.put(root, object);
+
+    try (GroovyClassLoader loader = new GroovyClassLoader(scriptParentClassLoader())) {
+      Class<?> scriptClass = loader.parseClass(expr, SCRIPT_NAME + ".groovy");
+      Script script = InvokerHelper.createScript(scriptClass, new Binding(newParams));
+      return script.run();
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
+  /**
+   * The compiled script extends groovy.lang.Script, so its class loader must see the same Groovy as this class. The
+   * thread context class loader is preferred because it also sees the user's classes, which a path can refer to, but
+   * it may not see Groovy, for example in an OSGi container where Groovy is a bundle of its own (#1933). Then Groovy's
+   * own class loader is used, like GroovyShell does.
+   */
+  private static ClassLoader scriptParentClassLoader() {
+    ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
+    if (contextClassLoader != null) {
+      try {
+        if (Class.forName(Script.class.getName(), false, contextClassLoader) == Script.class) {
+          return contextClassLoader;
+        }
+      } catch (ClassNotFoundException | LinkageError e) {
+        // The context class loader can't see Groovy
+      }
+    }
+    return Script.class.getClassLoader();
+  }
+}

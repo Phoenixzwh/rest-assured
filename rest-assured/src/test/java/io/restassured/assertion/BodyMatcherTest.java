@@ -6,11 +6,13 @@ import io.restassured.config.RestAssuredConfig;
 import io.restassured.http.ContentType;
 import io.restassured.internal.ContentParser;
 import io.restassured.internal.ResponseParserRegistrar;
+import io.restassured.internal.assertion.BodyMatcher;
 import io.restassured.response.Response;
 import org.hamcrest.core.IsEqual;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.Arrays;
 import java.util.Collection;
@@ -19,9 +21,8 @@ import java.util.Map;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 
-@RunWith(Parameterized.class)
 public class BodyMatcherTest {
-    @Parameterized.Parameters
+    // Replace @Parameterized.Parameters with @MethodSource
     public static Collection<Object[]> data() {
         return Arrays.asList(new Object[][]{
                 {MatcherConfig.ErrorDescriptionType.REST_ASSURED, 123, "123", true, ""},
@@ -43,29 +44,16 @@ public class BodyMatcherTest {
         });
     }
 
-    private final ResponseParserRegistrar responseParserRegistrar;
+    private final ResponseParserRegistrar responseParserRegistrar = new ResponseParserRegistrar();
 
-    private final MatcherConfig.ErrorDescriptionType errorDescriptionType;
-    private final Object isEqualValue;
-    private final Object jsonValue;
-    private final boolean expectedSuccess;
-    private final String expectedMessage;
-
-    public BodyMatcherTest(MatcherConfig.ErrorDescriptionType errorDescriptionType,
-                           Object isEqualValue,
-                           Object jsonValue,
-                           boolean expectedSuccess,
-                           String expectedMessage) {
-        this.responseParserRegistrar = new ResponseParserRegistrar();
-        this.errorDescriptionType = errorDescriptionType;
-        this.isEqualValue = isEqualValue;
-        this.jsonValue = jsonValue;
-        this.expectedSuccess = expectedSuccess;
-        this.expectedMessage = expectedMessage;
-    }
-
-    @Test
-    public void expectedMessageFormatWithTypeDetails() {
+    @DisplayName("expectedMessageFormatWithTypeDetails")
+    @ParameterizedTest(name = "{index}: errorType={0}, isEqualValue={1}, jsonValue={2}, expectedSuccess={3}, expectedMessage={4}")
+    @MethodSource("data")
+    void expectedMessageFormatWithTypeDetails(MatcherConfig.ErrorDescriptionType errorDescriptionType,
+                                              Object isEqualValue,
+                                              Object jsonValue,
+                                              boolean expectedSuccess,
+                                              String expectedMessage) {
         final RestAssuredConfig config = RestAssuredConfig.newConfig()
                 .matcherConfig(MatcherConfig.matcherConfig()
                         .errorDescriptionType(errorDescriptionType));
@@ -81,11 +69,35 @@ public class BodyMatcherTest {
                 .setContentType(ContentType.JSON)
                 .build();
 
-        final Map<String, Object> result = (Map<String, Object>) bodyMatcher.validate(response,
+        final Map<String, Object> result = bodyMatcher.validate(response,
                 new ContentParser().parse(response, responseParserRegistrar, config, true),
                 config);
 
         assertThat(result.get("success"), equalTo(expectedSuccess));
         assertThat(result.get("errorMessage"), equalTo(expectedMessage));
+    }
+
+    @Test
+    void path_assertion_failure_message_includes_response_body_when_body_was_parsed_to_a_string() {
+        final RestAssuredConfig config = RestAssuredConfig.newConfig();
+
+        final BodyMatcher bodyMatcher = new BodyMatcher();
+        bodyMatcher.setKey("foo");
+        bodyMatcher.setMatcher(new IsEqual<>("bar"));
+        bodyMatcher.setRpr(responseParserRegistrar);
+
+        // A JSON string literal is parsed to a java.lang.String, which cannot be navigated with a path
+        final Response response = new ResponseBuilder()
+                .setStatusCode(200)
+                .setBody("\"some text\"")
+                .setContentType(ContentType.JSON)
+                .build();
+
+        final Map<String, Object> result = bodyMatcher.validate(response,
+                new ContentParser().parse(response, responseParserRegistrar, config, true),
+                config);
+
+        assertThat(result.get("success"), equalTo(false));
+        assertThat(result.get("errorMessage"), equalTo("Cannot assert that path \"foo\" matches \"bar\" because the response body equal to \"some text\"."));
     }
 }

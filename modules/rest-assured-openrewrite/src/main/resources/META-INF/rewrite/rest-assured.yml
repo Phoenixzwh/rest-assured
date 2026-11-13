@@ -1,0 +1,242 @@
+#
+# Copyright 2026 the original author or authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#        http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: io.restassured.UpgradeToRestAssured7
+displayName: Upgrade to REST Assured 7
+description: >-
+  Upgrade to REST Assured ${project.version}. It migrates code from the APIs deprecated in REST Assured 6.3.0, changes
+  json-path and xml-path to their new names, json-path-gpath and xml-path-gpath, upgrades the io.rest-assured
+  dependencies of Maven and Gradle builds, and adds json-path-gpath (and xml-path-gpath) where the code uses paths,
+  since REST Assured 7 no longer includes a path engine. It also removes the SSL port settings and renames the root
+  path methods deprecated since REST Assured 4.0.0, which REST Assured 7 no longer has, and replaces
+  `ContextAuthenticationScheme`, deprecated in REST Assured 7, with `AuthenticationScheme`.
+recipeList:
+  - io.restassured.MigrateRestAssured6Deprecations
+  - io.restassured.RemoveSslPortSettings
+  - io.restassured.RenameShortRootPathMethods
+  # Not in MigrateRestAssured6Deprecations: in REST Assured 6, AuthenticationScheme still has authenticate(HTTPBuilder)
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.restassured.authentication.ContextAuthenticationScheme
+      newFullyQualifiedTypeName: io.restassured.authentication.AuthenticationScheme
+  - org.openrewrite.maven.ChangeDependencyGroupIdAndArtifactId:
+      oldGroupId: io.rest-assured
+      oldArtifactId: json-path
+      newGroupId: io.rest-assured
+      newArtifactId: json-path-gpath
+  - org.openrewrite.maven.ChangeDependencyGroupIdAndArtifactId:
+      oldGroupId: io.rest-assured
+      oldArtifactId: xml-path
+      newGroupId: io.rest-assured
+      newArtifactId: xml-path-gpath
+  - org.openrewrite.gradle.ChangeDependency:
+      oldGroupId: io.rest-assured
+      oldArtifactId: json-path
+      newGroupId: io.rest-assured
+      newArtifactId: json-path-gpath
+  - org.openrewrite.gradle.ChangeDependency:
+      oldGroupId: io.rest-assured
+      oldArtifactId: xml-path
+      newGroupId: io.rest-assured
+      newArtifactId: xml-path-gpath
+  - org.openrewrite.maven.UpgradeDependencyVersion:
+      groupId: io.rest-assured
+      artifactId: "*"
+      newVersion: ${project.version}
+  - org.openrewrite.gradle.UpgradeDependencyVersion:
+      groupId: io.rest-assured
+      artifactId: "*"
+      newVersion: ${project.version}
+  - io.restassured.openrewrite.AddGPathWhereUsed:
+      version: ${project.version}
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: io.restassured.MigrateRestAssured6Deprecations
+displayName: Migrate from APIs deprecated in REST Assured 6.3.0
+description: >-
+  Replace REST Assured APIs that are deprecated in 6.3.0 with their replacements: the object mapper factories and
+  `NumberReturnType` that moved to rest-assured-common, the HttpClient 4 host name verifier setters, the httpmime
+  multipart mode and the HttpClient 4 parameters that have a setting of their own on `HttpClientConfig`. It also finds
+  subclasses of REST Assured's authentication schemes that only override `authenticate(HTTPBuilder)`.
+recipeList:
+  - io.restassured.ChangeObjectMapperFactoryPackage
+  - io.restassured.ChangeNumberReturnTypePackage
+  - io.restassured.openrewrite.ConvertNumberReturnTypeGetters
+  - io.restassured.ReplaceX509HostnameVerifierSetters
+  - io.restassured.openrewrite.ReplaceHttpMultipartMode
+  - io.restassured.openrewrite.ReplaceHttpClientParams
+  - io.restassured.openrewrite.FindAuthenticationSchemesOverridingOnlyHttpBuilder
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: io.restassured.RemoveSslPortSettings
+displayName: Remove the SSL port settings
+description: >-
+  Remove the calls to `port(..)` on `SSLConfig` and `CertificateAuthSettings` and to `CertAuthScheme.setPort(..)`, and
+  the port argument of `AuthenticationContext.certificate(..)`, which REST Assured 7 removed. They never had an effect:
+  an https URL without a port always went to port 443.
+recipeList:
+  - org.openrewrite.java.RemoveMethodInvocations:
+      methodPattern: io.restassured.config.SSLConfig port(int)
+  - org.openrewrite.java.RemoveMethodInvocations:
+      methodPattern: io.restassured.authentication.CertificateAuthSettings port(int)
+  - org.openrewrite.java.RemoveMethodInvocations:
+      methodPattern: io.restassured.authentication.CertAuthScheme setPort(int)
+  - org.openrewrite.java.DeleteMethodArgument:
+      methodPattern: io.restassured.authentication.AuthenticationContext certificate(Object, String, String, java.security.KeyStore, Object, String, String, java.security.KeyStore, int, javax.net.ssl.HostnameVerifier, javax.net.ssl.SSLContext)
+      argumentIndex: 8
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: io.restassured.RenameShortRootPathMethods
+displayName: Use the root path methods instead of the ones deprecated in REST Assured 4.0.0
+description: >-
+  Replace `root(..)`, `noRoot()`, `appendRoot(..)` and `detachRoot(..)` of `ResponseSpecification` and
+  `ValidatableResponse` (and of the MockMvc and WebTestClient responses), and `setRoot(..)` of `JsonPath` and
+  `XmlPath`, which were deprecated in REST Assured 4.0.0 and removed in 7.0.0, with `rootPath(..)`, `noRootPath()`,
+  `appendRootPath(..)`, `detachRootPath(..)` and `setRootPath(..)`.
+recipeList:
+  - org.openrewrite.java.ChangeMethodName:
+      methodPattern: io.restassured.response.ValidatableResponseOptions root(String)
+      newMethodName: rootPath
+      matchOverrides: true
+  - org.openrewrite.java.ChangeMethodName:
+      methodPattern: io.restassured.response.ValidatableResponseOptions root(String, java.util.List)
+      newMethodName: rootPath
+      matchOverrides: true
+  - org.openrewrite.java.ChangeMethodName:
+      methodPattern: io.restassured.response.ValidatableResponseOptions noRoot()
+      newMethodName: noRootPath
+      matchOverrides: true
+  - org.openrewrite.java.ChangeMethodName:
+      methodPattern: io.restassured.response.ValidatableResponseOptions appendRoot(String)
+      newMethodName: appendRootPath
+      matchOverrides: true
+  - org.openrewrite.java.ChangeMethodName:
+      methodPattern: io.restassured.response.ValidatableResponseOptions appendRoot(String, java.util.List)
+      newMethodName: appendRootPath
+      matchOverrides: true
+  - org.openrewrite.java.ChangeMethodName:
+      methodPattern: io.restassured.response.ValidatableResponseOptions detachRoot(String)
+      newMethodName: detachRootPath
+      matchOverrides: true
+  - org.openrewrite.java.ChangeMethodName:
+      methodPattern: io.restassured.specification.ResponseSpecification root(String)
+      newMethodName: rootPath
+      matchOverrides: true
+  - org.openrewrite.java.ChangeMethodName:
+      methodPattern: io.restassured.specification.ResponseSpecification root(String, java.util.List)
+      newMethodName: rootPath
+      matchOverrides: true
+  - org.openrewrite.java.ChangeMethodName:
+      methodPattern: io.restassured.specification.ResponseSpecification noRoot()
+      newMethodName: noRootPath
+      matchOverrides: true
+  - org.openrewrite.java.ChangeMethodName:
+      methodPattern: io.restassured.specification.ResponseSpecification appendRoot(String)
+      newMethodName: appendRootPath
+      matchOverrides: true
+  - org.openrewrite.java.ChangeMethodName:
+      methodPattern: io.restassured.specification.ResponseSpecification appendRoot(String, java.util.List)
+      newMethodName: appendRootPath
+      matchOverrides: true
+  - org.openrewrite.java.ChangeMethodName:
+      methodPattern: io.restassured.specification.ResponseSpecification detachRoot(String)
+      newMethodName: detachRootPath
+      matchOverrides: true
+  - org.openrewrite.java.ChangeMethodName:
+      methodPattern: io.restassured.path.json.JsonPath setRoot(String)
+      newMethodName: setRootPath
+  - org.openrewrite.java.ChangeMethodName:
+      methodPattern: io.restassured.path.xml.XmlPath setRoot(String)
+      newMethodName: setRootPath
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: io.restassured.ChangeObjectMapperFactoryPackage
+displayName: Use the object mapper factories in rest-assured-common
+description: >-
+  Replace the object mapper factories in `io.restassured.path.json.mapper.factory` and
+  `io.restassured.path.xml.mapper.factory` with the ones in `io.restassured.common.mapper.factory`.
+recipeList:
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.restassured.path.json.mapper.factory.GsonObjectMapperFactory
+      newFullyQualifiedTypeName: io.restassured.common.mapper.factory.GsonObjectMapperFactory
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.restassured.path.json.mapper.factory.Jackson2ObjectMapperFactory
+      newFullyQualifiedTypeName: io.restassured.common.mapper.factory.Jackson2ObjectMapperFactory
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.restassured.path.json.mapper.factory.Jackson3ObjectMapperFactory
+      newFullyQualifiedTypeName: io.restassured.common.mapper.factory.Jackson3ObjectMapperFactory
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.restassured.path.json.mapper.factory.JohnzonObjectMapperFactory
+      newFullyQualifiedTypeName: io.restassured.common.mapper.factory.JohnzonObjectMapperFactory
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.restassured.path.json.mapper.factory.JsonbObjectMapperFactory
+      newFullyQualifiedTypeName: io.restassured.common.mapper.factory.JsonbObjectMapperFactory
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.restassured.path.json.mapper.factory.DefaultGsonObjectMapperFactory
+      newFullyQualifiedTypeName: io.restassured.common.mapper.factory.DefaultGsonObjectMapperFactory
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.restassured.path.json.mapper.factory.DefaultJackson2ObjectMapperFactory
+      newFullyQualifiedTypeName: io.restassured.common.mapper.factory.DefaultJackson2ObjectMapperFactory
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.restassured.path.json.mapper.factory.DefaultJackson3ObjectMapperFactory
+      newFullyQualifiedTypeName: io.restassured.common.mapper.factory.DefaultJackson3ObjectMapperFactory
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.restassured.path.json.mapper.factory.DefaultJohnzonObjectMapperFactory
+      newFullyQualifiedTypeName: io.restassured.common.mapper.factory.DefaultJohnzonObjectMapperFactory
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.restassured.path.json.mapper.factory.DefaultYassonObjectMapperFactory
+      newFullyQualifiedTypeName: io.restassured.common.mapper.factory.DefaultYassonObjectMapperFactory
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.restassured.path.xml.mapper.factory.JAXBObjectMapperFactory
+      newFullyQualifiedTypeName: io.restassured.common.mapper.factory.JAXBObjectMapperFactory
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.restassured.path.xml.mapper.factory.JakartaEEObjectMapperFactory
+      newFullyQualifiedTypeName: io.restassured.common.mapper.factory.JakartaEEObjectMapperFactory
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.restassured.path.xml.mapper.factory.DefaultJAXBObjectMapperFactory
+      newFullyQualifiedTypeName: io.restassured.common.mapper.factory.DefaultJAXBObjectMapperFactory
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.restassured.path.xml.mapper.factory.DefaultJakartaEEObjectMapperFactory
+      newFullyQualifiedTypeName: io.restassured.common.mapper.factory.DefaultJakartaEEObjectMapperFactory
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: io.restassured.ChangeNumberReturnTypePackage
+displayName: Use `NumberReturnType` in rest-assured-common
+description: >-
+  Replace `io.restassured.path.json.config.JsonPathConfig.NumberReturnType` with
+  `io.restassured.common.config.NumberReturnType`.
+recipeList:
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.restassured.path.json.config.JsonPathConfig$NumberReturnType
+      newFullyQualifiedTypeName: io.restassured.common.config.NumberReturnType
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: io.restassured.ReplaceX509HostnameVerifierSetters
+displayName: Use the `HostnameVerifier` setters instead of the `X509HostnameVerifier` ones
+description: >-
+  Replace `x509HostnameVerifier(..)` on `SSLConfig` and `CertificateAuthSettings`, and
+  `CertAuthScheme.setX509HostnameVerifier(..)`, which take an HttpClient 4 `X509HostnameVerifier`, with
+  `hostnameVerifier(..)` and `setHostnameVerifier(..)`, which take a `javax.net.ssl.HostnameVerifier`.
+recipeList:
+  - org.openrewrite.java.ChangeMethodName:
+      methodPattern: io.restassured.config.SSLConfig x509HostnameVerifier(org.apache.http.conn.ssl.X509HostnameVerifier)
+      newMethodName: hostnameVerifier
+  - org.openrewrite.java.ChangeMethodName:
+      methodPattern: io.restassured.authentication.CertificateAuthSettings x509HostnameVerifier(org.apache.http.conn.ssl.X509HostnameVerifier)
+      newMethodName: hostnameVerifier
+  - org.openrewrite.java.ChangeMethodName:
+      methodPattern: io.restassured.authentication.CertAuthScheme setX509HostnameVerifier(org.apache.http.conn.ssl.X509HostnameVerifier)
+      newMethodName: setHostnameVerifier

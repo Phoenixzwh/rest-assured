@@ -18,7 +18,6 @@ package io.restassured.config;
 
 import io.restassured.internal.common.assertion.AssertParameter;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.http.entity.mime.HttpMultipartMode;
 
 import java.nio.charset.Charset;
 
@@ -44,7 +43,8 @@ public class MultiPartConfig implements Config {
     /**
      * Create a new MultiPartConfig with default control name equal to {@value #DEFAULT_CONTROL_NAME} and
      * default file name equal to {@value #DEFAULT_FILE_NAME} and default subtype {@value #DEFAULT_SUBTYPE} and
-     * default boundary <code>null</code> (which means it'll be automatically generated) and default charset US-ASCII.
+     * default boundary <code>null</code> (which means it'll be automatically generated) and default charset <code>null</code>
+     * (see {@link #defaultCharset(String)}).
      */
     public MultiPartConfig() {
         this(DEFAULT_CONTROL_NAME, DEFAULT_FILE_NAME, DEFAULT_SUBTYPE, DEFAULT_BOUNDARY, DEFAULT_CHARSET, false);
@@ -149,17 +149,20 @@ public class MultiPartConfig implements Config {
     }
 
     /**
-     * Specify a default charset to use for multi-parts (default is US-ASCII). This affects the encoding of the multipart body (such as the
-     * control name) but <i>not</i> the actual <i>content</i> (such as the a JSON or String document).
+     * Specify a default charset to use for multi-parts (default is none). Unless the Content-Type of the request has a charset, it's
+     * added to the Content-Type and used to encode the content of String parts (such as a text or a serialized JSON document) that have
+     * no charset of their own, from {@link io.restassured.builder.MultiPartSpecBuilder#charset(String)} or the mime-type. Without a
+     * default charset, such parts are encoded as UTF-8. Files, input streams and byte arrays are sent as they are.
      * <p>
-     * <b>NOTE:</b> This setting is <i>only</i> taken into account if {@link HttpClientConfig#httpMultipartMode(HttpMultipartMode)} is set to
-     * something other than {@link HttpMultipartMode#STRICT} (which is the default). So if you want this setting to apply you also need to
-     * explicitly change the multipart mode, for example:
+     * The part headers (such as the control name and the file name) are <i>only</i> written in this charset if
+     * {@link HttpClientConfig#multipartMode(MultipartMode)} is set to {@link MultipartMode#BROWSER_COMPATIBLE}:
+     * {@link MultipartMode#STRICT} (which is the default) writes them as US-ASCII and {@link MultipartMode#RFC6532} as UTF-8.
+     * For example:
      *
      * <pre>
      * given().
      *         config(RestAssuredConfig.config()
-     *                                 .httpClient(HttpClientConfig.httpClientConfig().httpMultipartMode(BROWSER_COMPATIBLE))
+     *                                 .httpClient(HttpClientConfig.httpClientConfig().multipartMode(BROWSER_COMPATIBLE))
      *                                 .multiPartConfig(multiPartConfig().defaultCharset("UTF-8"))).
      * when().
      *        post("/x"). ..
@@ -173,17 +176,20 @@ public class MultiPartConfig implements Config {
     }
 
     /**
-     * Specify a default charset to use for multi-parts (default is US-ASCII). This affects the encoding of the multipart body (such as the
-     * control name) but <i>not</i> the actual <i>content</i> (such as the a JSON or String document).
+     * Specify a default charset to use for multi-parts (default is none). Unless the Content-Type of the request has a charset, it's
+     * added to the Content-Type and used to encode the content of String parts (such as a text or a serialized JSON document) that have
+     * no charset of their own, from {@link io.restassured.builder.MultiPartSpecBuilder#charset(String)} or the mime-type. Without a
+     * default charset, such parts are encoded as UTF-8. Files, input streams and byte arrays are sent as they are.
      * <p>
-     * <b>NOTE:</b> This setting is <i>only</i> taken into account if {@link HttpClientConfig#httpMultipartMode(HttpMultipartMode)} is set to
-     * something other than {@link HttpMultipartMode#STRICT} (which is the default). So if you want this setting to apply you also need to
-     * explicitly change the multipart mode, for example:
+     * The part headers (such as the control name and the file name) are <i>only</i> written in this charset if
+     * {@link HttpClientConfig#multipartMode(MultipartMode)} is set to {@link MultipartMode#BROWSER_COMPATIBLE}:
+     * {@link MultipartMode#STRICT} (which is the default) writes them as US-ASCII and {@link MultipartMode#RFC6532} as UTF-8.
+     * For example:
      *
      * <pre>
      * given().
      *         config(RestAssuredConfig.config()
-     *                                 .httpClient(HttpClientConfig.httpClientConfig().httpMultipartMode(BROWSER_COMPATIBLE))
+     *                                 .httpClient(HttpClientConfig.httpClientConfig().multipartMode(BROWSER_COMPATIBLE))
      *                                 .multiPartConfig(multiPartConfig().defaultCharset("UTF-8"))).
      * when().
      *        post("/x"). ..
@@ -209,7 +215,7 @@ public class MultiPartConfig implements Config {
     /**
      * Get the default multipart charset to use when sending multi-part data.
      *
-     * @return The boundary
+     * @return The charset, or <code>null</code> if none is configured
      */
     public String defaultCharset() {
         return defaultCharset;

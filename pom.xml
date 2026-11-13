@@ -18,16 +18,11 @@
 
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
     <modelVersion>4.0.0</modelVersion>
-    <parent>
-        <groupId>org.sonatype.oss</groupId>
-        <artifactId>oss-parent</artifactId>
-        <version>5</version>
-    </parent>
     <groupId>io.rest-assured</groupId>
     <artifactId>rest-assured-parent</artifactId>
     <packaging>pom</packaging>
-    <version>4.4.1-SNAPSHOT</version>
-    <url>http://code.google.com/p/rest-assured</url>
+    <version>7.0.0-SNAPSHOT</version>
+    <url>https://rest-assured.io/</url>
     <name>REST Assured Parent POM</name>
     <description>Java DSL for easy testing of REST services</description>
     <inceptionYear>2010</inceptionYear>
@@ -38,15 +33,16 @@
     <licenses>
         <license>
             <name>Apache 2.0</name>
-            <url>http://www.apache.org/licenses/LICENSE-2.0.html</url>
+            <url>https://www.apache.org/licenses/LICENSE-2.0.html</url>
+            <distribution>repo</distribution>
         </license>
     </licenses>
     <developers>
         <developer>
             <name>Johan Haleby</name>
             <id>johan.haleby</id>
-            <organization>Jayway</organization>
-            <organizationUrl>http://www.jayway.com</organizationUrl>
+            <organization>Parkster</organization>
+            <organizationUrl>https://www.parkster.com</organizationUrl>
             <email>johan.haleby at gmail.com</email>
             <timezone>+1</timezone>
             <roles>
@@ -55,32 +51,62 @@
         </developer>
     </developers>
     <properties>
+        <maven.compiler.release>17</maven.compiler.release>
         <scm.branch>master</scm.branch>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <groovy.version>3.0.8</groovy.version>
-        <groovy.range>[3.0,3.1)</groovy.range>
-        <gmaven.version>1.5</gmaven.version>
-        <hamcrest.version>2.1</hamcrest.version>
-        <jackson1.version>1.9.11</jackson1.version>
-        <jackson2.version>2.11.1</jackson2.version>
-        <johnzon.version>1.1.11</johnzon.version>
-        <yasson.version>1.0.6</yasson.version>
-        <jakarta.json.version>1.1.6</jakarta.json.version>
-        <maven-javadoc.version>2.9.1</maven-javadoc.version>
-        <surefire.version>2.22.0</surefire.version>
-        <kotlin.version>1.5.0</kotlin.version>
-        <assertj-core.version>3.16.1</assertj-core.version>
+        <!-- The revision of the internal path engine SPI in rest-assured-common, written to the version files in META-INF/rest-assured -->
+        <rest-assured.path-spi.revision>2</rest-assured.path-spi.revision>
+        <!-- The revision of the HTTP client SPI in rest-assured-common (HttpClientSpi.REVISION), written to the version files of
+             rest-assured and the HTTP client modules in META-INF/rest-assured -->
+        <rest-assured.http-spi.revision>1</rest-assured.http-spi.revision>
+        <!-- The Groovy version the GPath modules are built with. They support Groovy 4.0 to 6.x (groovy.range), which the groovy
+             CI job tests: code compiled by Groovy 6 doesn't run on Groovy 4 and 5, code compiled by Groovy 5 runs on all three -->
+        <groovy.version>5.1.3</groovy.version>
+        <groovy.range>[4.0,7.0)</groovy.range>
+        <!-- The Jayway JsonPath version json-path-jayway is built with. It supports 2.8.0 and later, which it checks when it loads -->
+        <jayway.version>3.0.0</jayway.version>
+        <!-- The Apache HttpClient 5 version http-client-apache5 is built with. It supports 5.2.1 and later, which it checks when
+             it loads. httpcore5 isn't managed, so that another version of httpclient5 brings its own httpcore5 -->
+        <httpclient5.version>5.6.5</httpclient5.version>
+        <gmavenplus.version>5.1.0</gmavenplus.version>
+        <hamcrest.version>3.0</hamcrest.version>
+        <junit.version>6.1.3</junit.version>
+        <byte-buddy.version>1.18.16</byte-buddy.version>
+        <jackson2.version>2.22.4</jackson2.version>
+        <jackson3.version>3.2.4</jackson3.version>
+        <johnzon.version>2.2.0</johnzon.version>
+        <yasson.version>3.0.5</yasson.version>
+        <parsson.version>1.1.9</parsson.version>
+        <jakarta.json.version>2.1.3</jakarta.json.version>
+        <maven-javadoc.version>3.12.0</maven-javadoc.version>
+        <surefire.version>3.6.1</surefire.version>
+        <!-- The Kotlin compiler (kotlin-maven-plugin) that the Kotlin modules are built with -->
+        <kotlin.version>2.4.21</kotlin.version>
+        <!-- The oldest Kotlin that the Kotlin modules support. They're compiled with this language and API version
+             and depend on this kotlin-stdlib, so a Kotlin 2.2 build can read them. kotlin-example is built with it. -->
+        <kotlin.language.version>2.2</kotlin.language.version>
+        <kotlin-stdlib.version>2.2.21</kotlin-stdlib.version>
+        <!-- The Scala 3 version scala-extensions is built with: the Scala 3.3 LTS, so that it works with every newer Scala 3.
+             CI also tests scala-extensions with the latest Scala 3 (the scala job) -->
+        <scala3.version>3.3.9</scala3.version>
+        <assertj-core.version>3.27.7</assertj-core.version>
+        <!-- Only for a test of rest-assured that compares its OAuth 1 signatures with those of scribejava -->
         <scribe.version>2.5.3</scribe.version>
-    </properties>
+        <guava.version>33.7.2-jre</guava.version>
+        <dokka.version>2.2.0</dokka.version>
+		
+		<duplicate-finder-maven-plugin.phase>package</duplicate-finder-maven-plugin.phase>
+	</properties>
     <scm>
-        <url>http://github.com/rest-assured/rest-assured/tree/${scm.branch}</url>
+        <url>https://github.com/rest-assured/rest-assured/tree/${scm.branch}</url>
         <connection>scm:git:git://github.com/rest-assured/rest-assured.git</connection>
         <developerConnection>scm:git:ssh://git@github.com/rest-assured/rest-assured.git</developerConnection>
+        <tag>rest-assured-6.1.0</tag>
     </scm>
     <mailingLists>
         <mailingList>
             <name>rest-assured mailing-list</name>
-            <archive>http://groups.google.com/group/rest-assured/topics</archive>
+            <archive>https://groups.google.com/group/rest-assured/topics</archive>
         </mailingList>
     </mailingLists>
     <modules>
@@ -89,56 +115,37 @@
         <module>rest-assured-all</module>
         <module>examples</module>
         <module>json-path</module>
+        <module>json-path-gpath</module>
         <module>rest-assured-common</module>
         <module>xml-path</module>
+        <module>xml-path-gpath</module>
+        <module>rest-assured-bom</module>
     </modules>
 
     <build>
         <pluginManagement>
             <plugins>
                 <plugin>
-                    <groupId>org.codehaus.mojo</groupId>
-                    <artifactId>animal-sniffer-maven-plugin</artifactId>
-                    <version>1.15</version>
-                    <configuration>
-                        <signature>
-                            <groupId>org.codehaus.mojo.signature</groupId>
-                            <artifactId>java16</artifactId>
-                            <version>1.0</version>
-                        </signature>
-                    </configuration>
-                    <executions>
-                        <execution>
-                            <id>check-java-version-compatibility</id>
-                            <phase>test</phase>
-                            <goals>
-                                <goal>check</goal>
-                            </goals>
-                        </execution>
-                    </executions>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-source-plugin</artifactId>
+                    <version>3.4.0</version>
                 </plugin>
                 <plugin>
-                    <groupId>org.codehaus.gmaven</groupId>
-                    <artifactId>gmaven-plugin</artifactId>
-                    <version>${gmaven.version}</version>
+                    <groupId>org.apache.felix</groupId>
+                    <artifactId>maven-bundle-plugin</artifactId>
+                    <version>6.2.0</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.codehaus.gmavenplus</groupId>
+                    <artifactId>gmavenplus-plugin</artifactId>
+                    <version>${gmavenplus.version}</version>
                     <configuration>
-                        <providerSelection>2.0</providerSelection>
-                        <source />
+                        <!-- gmavenplus reads maven.compiler.target, not maven.compiler.release -->
+                        <targetBytecode>${maven.compiler.release}</targetBytecode>
                     </configuration>
                     <dependencies>
                         <dependency>
-                            <groupId>org.codehaus.gmaven.runtime</groupId>
-                            <artifactId>gmaven-runtime-2.0</artifactId>
-                            <version>${gmaven.version}</version>
-                            <exclusions>
-                                <exclusion>
-                                    <groupId>org.codehaus.groovy</groupId>
-                                    <artifactId>groovy-all</artifactId>
-                                </exclusion>
-                            </exclusions>
-                        </dependency>
-                        <dependency>
-                            <groupId>org.codehaus.groovy</groupId>
+                            <groupId>org.apache.groovy</groupId>
                             <artifactId>groovy</artifactId>
                             <version>${groovy.version}</version>
                         </dependency>
@@ -146,10 +153,17 @@
                     <executions>
                         <execution>
                             <goals>
+                                <goal>addSources</goal>
+                                <goal>addTestSources</goal>
+
                                 <goal>generateStubs</goal>
                                 <goal>compile</goal>
                                 <goal>generateTestStubs</goal>
-                                <goal>testCompile</goal>
+                                <goal>compileTests</goal>
+
+                                <!-- optional but recommended so stubs don't end up in the final artifact -->
+                                <goal>removeStubs</goal>
+                                <goal>removeTestStubs</goal>
                             </goals>
                         </execution>
                     </executions>
@@ -157,14 +171,30 @@
                 <plugin>
                     <groupId>org.basepom.maven</groupId>
                     <artifactId>duplicate-finder-maven-plugin</artifactId>
-                    <version>1.3.0</version>
+                    <version>2.0.1</version>
                     <executions>
                         <execution>
                             <id>duplicate-check</id>
-                            <phase>package</phase>
+                            <phase>${duplicate-finder-maven-plugin.phase}</phase>
                             <goals>
                                 <goal>check</goal>
                             </goals>
+                            <configuration>
+                                <ignoredDependencies>
+                                    <ignoredDependency>
+                                        <groupId>jakarta.platform</groupId>
+                                        <artifactId>jakarta.jakartaee-web-api</artifactId>
+                                    </ignoredDependency>
+                                    <ignoredDependency>
+                                        <groupId>jakarta.authentication</groupId>
+                                        <artifactId>jakarta.authentication-api</artifactId>
+                                    </ignoredDependency>
+                                    <ignoredDependency>
+                                        <groupId>jakarta.enterprise</groupId>
+                                        <artifactId>jakarta.enterprise.cdi-api</artifactId>
+                                    </ignoredDependency>
+                                </ignoredDependencies>
+                            </configuration>
                         </execution>
                     </executions>
                     <configuration>
@@ -183,18 +213,54 @@
                             <ignoredResourcePattern>.*draftv[34]/schema$</ignoredResourcePattern>
                             <!-- Scala lang -->
                             <ignoredResourcePattern>rootdoc\.txt</ignoredResourcePattern>
+                            <!-- kotlin-compiler-embeddable, which OpenRewrite parses Gradle Kotlin scripts with, has those of kotlin-stdlib -->
+                            <ignoredResourcePattern>.*\.kotlin_builtins$</ignoredResourcePattern>
                         </ignoredResourcePatterns>
                         <ignoredClassPatterns>
                             <!-- Jigsaw project (Java 9) and later module-info classes. -->
                             <ignoredClassPattern>.*\.module-info$</ignoredClassPattern>
                             <ignoredClassPattern>javax\.activation.*</ignoredClassPattern>
+                            <!-- Some classes that are duplicated in the (optional) JAXB / Jakarta EE dependencies. -->
+                            <ignoredClassPattern>com\.sun\.istack.*</ignoredClassPattern>
+                            <ignoredClassPattern>com\.sun\.xml.*</ignoredClassPattern>
+                            <ignoredClassPattern>META-INF\.versions\.9\.com\.sun\.istack\.logging.*</ignoredClassPattern>
                             <!-- Spring AOP -->
                             <ignoredClassPattern>org\.aopalliance.*</ignoredClassPattern>
                             <!-- OSGi -->
                             <ignoredClassPattern>org\.osgi.*</ignoredClassPattern>
                             <ignoredClassPattern>org\.ops4j.*</ignoredClassPattern>
+                            <!-- Each OpenRewrite Java parser (one per JDK) has the same package-info -->
+                            <ignoredClassPattern>org\.openrewrite\.java\.isolated\.package-info$</ignoredClassPattern>
                         </ignoredClassPatterns>
                     </configuration>
+                </plugin>
+                <!-- Modules that list this plugin check that they don't bring Groovy to their users. Test scope Groovy,
+                     which the path engines bring to tests, is allowed. -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-enforcer-plugin</artifactId>
+                    <version>3.6.3</version>
+                    <executions>
+                        <execution>
+                            <id>ban-groovy</id>
+                            <goals>
+                                <goal>enforce</goal>
+                            </goals>
+                            <configuration>
+                                <rules>
+                                    <bannedDependencies>
+                                        <excludes>
+                                            <exclude>org.apache.groovy:*:*:*:compile</exclude>
+                                            <exclude>org.apache.groovy:*:*:*:runtime</exclude>
+                                            <exclude>org.codehaus.groovy:*:*:*:compile</exclude>
+                                            <exclude>org.codehaus.groovy:*:*:*:runtime</exclude>
+                                        </excludes>
+                                        <message>Groovy must not be a compile or runtime dependency: REST Assured doesn't need it without a GPath path engine.</message>
+                                    </bannedDependencies>
+                                </rules>
+                            </configuration>
+                        </execution>
+                    </executions>
                 </plugin>
             </plugins>
         </pluginManagement>
@@ -202,10 +268,9 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.8.1</version>
+                <version>3.16.0</version>
                 <configuration>
-                    <source>1.8</source>
-                    <target>1.8</target>
+                    <release>17</release>
                     <encoding>UTF-8</encoding>
                 </configuration>
             </plugin>
@@ -215,7 +280,7 @@
                 <version>${maven-javadoc.version}</version>
                 <configuration>
                     <failOnError>false</failOnError>
-                    <additionalparam>-Xdoclint:none</additionalparam>
+                    <additionalJOption>-Xdoclint:none</additionalJOption>
                 </configuration>
             </plugin>
             <plugin>
@@ -256,6 +321,40 @@
                 <groupId>org.basepom.maven</groupId>
                 <artifactId>duplicate-finder-maven-plugin</artifactId>
             </plugin>
+            <plugin>
+                <!-- See docs here https://central.sonatype.org/publish/publish-portal-maven -->
+                <groupId>org.sonatype.central</groupId>
+                <artifactId>central-publishing-maven-plugin</artifactId>
+                <version>0.12.0</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <publishingServerId>central</publishingServerId>
+                    <autoPublish>true</autoPublish>
+                    <excludeArtifacts>
+                        <!-- Examples -->
+                        <excludeArtifact>example-parent</excludeArtifact>
+                        <excludeArtifact>scalatra-example</excludeArtifact>
+                        <excludeArtifact>scalatra-webapp</excludeArtifact>
+                        <excludeArtifact>rest-assured-itest-java</excludeArtifact>
+                        <excludeArtifact>spring-mvc-webapp</excludeArtifact>
+                        <excludeArtifact>scala-example</excludeArtifact>
+                        <excludeArtifact>scala-mock-mvc-example</excludeArtifact>
+                        <excludeArtifact>kotlin-example</excludeArtifact>
+                        <excludeArtifact>scala3-example</excludeArtifact>
+                        <excludeArtifact>jackson3-example</excludeArtifact>
+                        <excludeArtifact>spring7-mvc-webapp</excludeArtifact>
+                        <excludeArtifact>rest-assured-no-groovy</excludeArtifact>
+                    </excludeArtifacts>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-release-plugin</artifactId>
+                <version>3.3.1</version>
+                <configuration>
+                    <goals>clean verify</goals> <!-- Avoids triggering 'deploy' -->
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 
@@ -278,6 +377,7 @@
                         </executions>
                         <configuration>
                             <failOnError>false</failOnError>
+                            <additionalJOption>-Xdoclint:none</additionalJOption>
                         </configuration>
                     </plugin>
                     <plugin>
@@ -295,7 +395,7 @@
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-gpg-plugin</artifactId>
-                        <version>1.6</version>
+                        <version>3.2.8</version>
                         <executions>
                             <execution>
                                 <id>sign-artifacts</id>
@@ -310,16 +410,26 @@
             </build>
         </profile>
         <profile>
-            <id>dist</id>
-            <!-- Active profile when running release -->
-            <activation>
-                <property>
-                    <name>release</name>
-                </property>
-            </activation>
-            <modules>
-                <module>dist</module>
-            </modules>
+            <!-- Runs the tests on another Groovy (-Dgroovy.version=X) without compiling the main code again, so that they test
+                 the classes built with the build's Groovy, which is what users run. Use it with -Dmaven.main.skip, after a build
+                 without this profile and with no clean in between -->
+            <id>groovy-runtime</id>
+            <build>
+                <pluginManagement>
+                    <plugins>
+                        <plugin>
+                            <groupId>org.codehaus.gmavenplus</groupId>
+                            <artifactId>gmavenplus-plugin</artifactId>
+                            <executions>
+                                <execution>
+                                    <id>default</id>
+                                    <phase>none</phase>
+                                </execution>
+                            </executions>
+                        </plugin>
+                    </plugins>
+                </pluginManagement>
+            </build>
         </profile>
     </profiles>
 
@@ -330,43 +440,63 @@
                 <artifactId>tagsoup</artifactId>
                 <version>1.2.1</version>
             </dependency>
+            <!-- Backward compatibility with JAXB (Jakarta EE 8?) -->
             <dependency>
-                <groupId>jakarta.xml.bind</groupId>
-                <artifactId>jakarta.xml.bind-api</artifactId>
-                <version>2.3.3</version>
+                <groupId>javax.xml.bind</groupId>
+                <artifactId>jaxb-api</artifactId>
+                <version>2.3.1</version>
             </dependency>
             <dependency>
                 <groupId>com.sun.xml.bind</groupId>
                 <artifactId>jaxb-impl</artifactId>
-                <version>2.3.3</version>
-                <exclusions>
-                    <exclusion>
-                        <!-- jakarta.xml.bind-api already brings in jakarta.activation:jakarta.activation-api -->
-                        <groupId>com.sun.activation</groupId>
-                        <artifactId>jakarta.activation</artifactId>
-                    </exclusion>
-                </exclusions>
+                <version>2.3.9</version>
+            </dependency>
+            <!-- Jakarta EE 9 -->
+            <dependency>
+                <groupId>jakarta.xml.bind</groupId>
+                <artifactId>jakarta.xml.bind-api</artifactId>
+                <version>4.0.5</version>
             </dependency>
             <dependency>
-                <groupId>junit</groupId>
-                <artifactId>junit</artifactId>
-                <version>4.13.1</version>
-                <exclusions>
-                    <exclusion>
-                        <groupId>org.hamcrest</groupId>
-                        <artifactId>hamcrest-core</artifactId>
-                    </exclusion>
-                </exclusions>
+                <groupId>org.glassfish.jaxb</groupId>
+                <artifactId>jaxb-runtime</artifactId>
+                <version>4.0.9</version>
+            </dependency>
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter</artifactId>
+                <version>${junit.version}</version>
+            </dependency>
+            <!-- AssertJ brings an older Byte Buddy than Mockito, which doesn't support Java 25 -->
+            <dependency>
+                <groupId>net.bytebuddy</groupId>
+                <artifactId>byte-buddy</artifactId>
+                <version>${byte-buddy.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.bytebuddy</groupId>
+                <artifactId>byte-buddy-agent</artifactId>
+                <version>${byte-buddy.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.apache.commons</groupId>
                 <artifactId>commons-lang3</artifactId>
-                <version>3.11</version>
+                <version>3.21.0</version>
             </dependency>
             <dependency>
-                <groupId>org.codehaus.groovy</groupId>
+                <groupId>org.apache.groovy</groupId>
                 <artifactId>groovy</artifactId>
                 <version>${groovy.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.jayway.jsonpath</groupId>
+                <artifactId>json-path</artifactId>
+                <version>${jayway.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.httpcomponents.client5</groupId>
+                <artifactId>httpclient5</artifactId>
+                <version>${httpclient5.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.fasterxml.jackson.core</groupId>
@@ -374,24 +504,19 @@
                 <version>${jackson2.version}</version>
             </dependency>
             <dependency>
-                <groupId>org.codehaus.jackson</groupId>
-                <artifactId>jackson-core-asl</artifactId>
-                <version>${jackson1.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.codehaus.jackson</groupId>
-                <artifactId>jackson-mapper-asl</artifactId>
-                <version>${jackson1.version}</version>
-            </dependency>
-            <dependency>
                 <groupId>org.apache.johnzon</groupId>
                 <artifactId>johnzon-mapper</artifactId>
                 <version>${johnzon.version}</version>
             </dependency>
             <dependency>
-                <groupId>org.eclipse</groupId>
+                <groupId>org.eclipse.yasson</groupId>
                 <artifactId>yasson</artifactId>
                 <version>${yasson.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.eclipse.parsson</groupId>
+                <artifactId>parsson</artifactId>
+                <version>${parsson.version}</version>
             </dependency>
             <dependency>
                 <groupId>jakarta.json</groupId>
@@ -401,12 +526,18 @@
             <dependency>
                 <groupId>com.google.code.gson</groupId>
                 <artifactId>gson</artifactId>
-                <version>2.6.2</version>
+                <version>2.15.0</version>
             </dependency>
             <dependency>
                 <groupId>com.googlecode.json-simple</groupId>
                 <artifactId>json-simple</artifactId>
                 <version>1.1.1</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>junit</groupId>
+                        <artifactId>junit</artifactId>
+                    </exclusion>
+                </exclusions>
             </dependency>
             <dependency>
                 <groupId>org.hamcrest</groupId>
@@ -416,12 +547,17 @@
             <dependency>
                 <groupId>commons-io</groupId>
                 <artifactId>commons-io</artifactId>
-                <version>2.8.0</version>
+                <version>2.22.0</version>
             </dependency>
             <dependency>
                 <groupId>org.jetbrains.kotlin</groupId>
-                <artifactId>kotlin-stdlib-jdk8</artifactId>
-                <version>${kotlin.version}</version>
+                <artifactId>kotlin-stdlib</artifactId>
+                <version>${kotlin-stdlib.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.scala-lang</groupId>
+                <artifactId>scala3-interfaces</artifactId>
+                <version>${scala3.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.assertj</groupId>
@@ -430,9 +566,34 @@
             </dependency>
             <dependency>
                 <groupId>com.squareup.okhttp3</groupId>
-                <artifactId>mockwebserver</artifactId>
-                <version>4.2.2</version>
+                <artifactId>mockwebserver3-junit5</artifactId>
+                <version>5.5.1</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jetbrains</groupId>
+                <artifactId>annotations</artifactId>
+                <version>26.1.0</version>
+            </dependency>
+            <dependency>
+                <groupId>org.powermock</groupId>
+                <artifactId>powermock-reflect</artifactId>
+                <version>2.0.9</version>
+            </dependency>
+            <dependency>
+                <groupId>tools.jackson</groupId>
+                <artifactId>jackson-bom</artifactId>
+                <version>${jackson3.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
             </dependency>
         </dependencies>
     </dependencyManagement>
+
+    <distributionManagement>
+        <snapshotRepository>
+            <id>central-portal-snapshots</id>
+            <name>Central Portal Snapshots</name>
+            <url>https://central.sonatype.com/repository/maven-snapshots/</url>
+        </snapshotRepository>
+    </distributionManagement>
 </project>

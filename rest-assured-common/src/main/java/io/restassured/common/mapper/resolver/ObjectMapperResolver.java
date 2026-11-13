@@ -19,23 +19,28 @@ package io.restassured.common.mapper.resolver;
 import static io.restassured.internal.common.classpath.ClassPathResolver.existInCP;
 
 public class ObjectMapperResolver {
-    private static final boolean isJackson1Present = existInCP("org.codehaus.jackson.map.ObjectMapper") && existInCP("org.codehaus.jackson.JsonGenerator");
     private static final boolean isJackson2Present = existInCP("com.fasterxml.jackson.databind.ObjectMapper") && existInCP("com.fasterxml.jackson.core.JsonGenerator");
+    private static final boolean isJackson3Present = existInCP("tools.jackson.databind.ObjectMapper") && existInCP("tools.jackson.core.JsonGenerator");
     private static final boolean isJaxbPresent = existInCP("javax.xml.bind.Binder");
+    private static final boolean isJakartaEEPresent = existInCP("jakarta.xml.bind.Binder");
     private static final boolean isGsonPresent = existInCP("com.google.gson.Gson");
     private static final boolean isJohnzonPresent = existInCP("org.apache.johnzon.mapper.Mapper");
     private static final boolean isYassonPresent = existInCP("org.eclipse.yasson.JsonBindingProvider");
-
-    public static boolean isJackson1InClassPath() {
-        return isJackson1Present;
-    }
 
     public static boolean isJackson2InClassPath() {
         return isJackson2Present;
     }
 
+    public static boolean isJackson3InClassPath() {
+        return isJackson3Present;
+    }
+
     public static boolean isJAXBInClassPath() {
         return isJaxbPresent;
+    }
+
+    public static boolean isJakartaEEInClassPath() {
+        return isJakartaEEPresent;
     }
 
     public static boolean isGsonInClassPath() {

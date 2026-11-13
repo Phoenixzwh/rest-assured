@@ -28,7 +28,8 @@ class ResponseConverter {
         MockMvcRestAssuredResponseImpl mvc = (MockMvcRestAssuredResponseImpl) response;
 
         RestAssuredResponseImpl std = new RestAssuredResponseImpl();
-        std.setConnectionManager(mvc.getConnectionManager());
+        std.setConfig(mvc.getConfig());
+        std.setResponseCloser(mvc.getResponseCloser());
         std.setContent(mvc.getContent());
         std.setContentType(mvc.getContentType());
         std.setCookies(mvc.detailedCookies());
@@ -42,6 +43,7 @@ class ResponseConverter {
         std.setRpr(mvc.getRpr());
         std.setFilterContextProperties(mvc.getFilterContextProperties());
         std.setLogRepository(mvc.getLogRepository());
+        std.setEffectiveUri(mvc.getEffectiveUri());
         return std;
     }
 }

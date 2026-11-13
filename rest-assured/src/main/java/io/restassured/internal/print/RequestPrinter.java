@@ -22,6 +22,8 @@ import io.restassured.http.Cookies;
 import io.restassured.http.Header;
 import io.restassured.http.Headers;
 import io.restassured.internal.NoParameterValue;
+import io.restassured.internal.http.CharsetExtractor;
+import io.restassured.internal.http.ContentTypeExtractor;
 import io.restassured.internal.support.Prettifier;
 import io.restassured.parsing.Parser;
 import io.restassured.specification.FilterableRequestSpecification;
@@ -30,9 +32,15 @@ import io.restassured.specification.ProxySpecification;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
 
+import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -88,6 +96,46 @@ public class RequestPrinter {
         return logString;
     }
 
+    public static String print(FilterableRequestSpecification requestSpec, String requestMethod,
+                               String completeRequestUri,
+                               Set<LogDetail> logDetails, Set<String> blacklistedHeaders,
+                               PrintStream stream, boolean shouldPrettyPrint) {
+        final StringBuilder builder = new StringBuilder();
+
+        if (logDetails.contains(ALL)) {
+            return print(requestSpec, requestMethod, completeRequestUri, ALL, blacklistedHeaders, stream, shouldPrettyPrint);
+        } else {
+            if (logDetails.contains(METHOD)) {
+                addSingle(builder, "Request method:", requestMethod);
+            }
+            if (logDetails.contains(URI)) {
+                addSingle(builder, "Request URI:", completeRequestUri);
+            }
+            if (logDetails.contains(PARAMS)) {
+                addMapDetails(builder, "Request params:", requestSpec.getRequestParams());
+                addMapDetails(builder, "Query params:", requestSpec.getQueryParams());
+                addMapDetails(builder, "Form params:", requestSpec.getFormParams());
+                addMapDetails(builder, "Path params:", requestSpec.getNamedPathParams());
+            }
+            if (logDetails.contains(HEADERS)) {
+                addHeaders(requestSpec, blacklistedHeaders, builder);
+            }
+            if (logDetails.contains(COOKIES)) {
+                addCookies(requestSpec, builder);
+            }
+            if (logDetails.contains(PARAMS)) {
+                addMultiParts(requestSpec, builder);
+            }
+            if (logDetails.contains(BODY)) {
+                addBody(requestSpec, builder, shouldPrettyPrint);
+            }
+        }
+
+        final String logString = StringUtils.removeEnd(builder.toString(), SystemUtils.LINE_SEPARATOR);
+        stream.println(logString);
+        return logString;
+    }
+
     private static void addProxy(FilterableRequestSpecification requestSpec, StringBuilder builder) {
         builder.append("Proxy:");
         ProxySpecification proxySpec = requestSpec.getProxySpecification();
@@ -103,7 +151,8 @@ public class RequestPrinter {
     private static void addBody(FilterableRequestSpecification requestSpec, StringBuilder builder, boolean shouldPrettyPrint) {
         builder.append("Body:");
         if (requestSpec.getBody() != null) {
-            final String body;
+            // Note: requestSpec.getBody() below is generic and may not always return a String!
+            final Object body;
             if (shouldPrettyPrint) {
                 body = new Prettifier().getPrettifiedBodyIfPossible(requestSpec);
             } else {
@@ -188,16 +237,55 @@ public class RequestPrinter {
                     }
                 }
                 builder.append(SystemUtils.LINE_SEPARATOR); // There's a newline between headers and content in multi-parts
-                if (multiPart.getContent() instanceof InputStream) {
+                final Object content = multiPart.getContent();
+                if (content instanceof InputStream) {
                     appendFourTabs(builder.append(SystemUtils.LINE_SEPARATOR)).append("<inputstream>");
+                } else if (content instanceof File && !isText(multiPart.getMimeType())) {
+                    // Don't log the content of a binary file, only its path
+                    appendFourTabs(builder.append(SystemUtils.LINE_SEPARATOR)).append(content);
                 } else {
                     Parser parser = Parser.fromContentType(multiPart.getMimeType());
-                    String prettified = new Prettifier().prettify(multiPart.getContent().toString(), parser);
+                    Object printableContent = content instanceof File ? readFile((File) content, multiPart) : content;
+                    String prettified = new Prettifier().prettify(printableContent, parser);
                     String prettifiedIndented = StringUtils.replace(prettified, SystemUtils.LINE_SEPARATOR, SystemUtils.LINE_SEPARATOR + TAB + TAB + TAB + TAB);
                     appendFourTabs(builder.append(SystemUtils.LINE_SEPARATOR)).append(prettifiedIndented);
                 }
             }
             builder.append(SystemUtils.LINE_SEPARATOR);
+        }
+    }
+
+    private static boolean isText(String mimeType) {
+        if (mimeType == null) {
+            return false;
+        }
+        String mimeTypeWithoutParameters = ContentTypeExtractor.getContentTypeWithoutCharset(mimeType.toLowerCase(Locale.ROOT));
+        // Parser.fromContentType maps */* to TEXT, but a wildcard says nothing about whether the file is text
+        return mimeTypeWithoutParameters.startsWith("text/")
+                || (Parser.fromContentType(mimeTypeWithoutParameters) != null && !mimeTypeWithoutParameters.equals("*/*"));
+    }
+
+    /**
+     * @return The content of the file, or its path if it can't be read (sending the request then reports why).
+     */
+    private static String readFile(File file, MultiPartSpecification multiPart) {
+        try {
+            return new String(Files.readAllBytes(file.toPath()), charsetOf(multiPart));
+        } catch (IOException e) {
+            return file.toString();
+        }
+    }
+
+    private static Charset charsetOf(MultiPartSpecification multiPart) {
+        String charset = StringUtils.defaultIfBlank(multiPart.getCharset(), CharsetExtractor.getCharsetFromContentType(multiPart.getMimeType()));
+        if (StringUtils.isBlank(charset)) {
+            return StandardCharsets.UTF_8;
+        }
+        try {
+            return Charset.forName(charset.trim());
+        } catch (IllegalArgumentException e) {
+            // Unsupported or illegal charset name
+            return StandardCharsets.UTF_8;
         }
     }
 

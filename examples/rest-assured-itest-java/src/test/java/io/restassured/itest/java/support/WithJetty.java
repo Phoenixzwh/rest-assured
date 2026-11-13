@@ -24,20 +24,27 @@ import org.eclipse.jetty.security.HashLoginService;
 import org.eclipse.jetty.security.LoginService;
 import org.eclipse.jetty.security.authentication.BasicAuthenticator;
 import org.eclipse.jetty.server.*;
+import org.eclipse.jetty.server.handler.AbstractHandler;
+import org.eclipse.jetty.server.handler.HandlerList;
+import org.eclipse.jetty.server.handler.SecuredRedirectHandler;
 import org.eclipse.jetty.util.security.Constraint;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.eclipse.jetty.webapp.WebAppContext;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Rule;
-import org.junit.rules.ExpectedException;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.TestInstance;
 
+import javax.servlet.ServletException;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 import java.io.File;
+import java.io.IOException;
 import java.util.Collections;
 
 import static io.restassured.itest.java.support.WithJetty.JettyOption.RESET_REST_ASSURED_BEFORE_TEST;
 
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public abstract class WithJetty {
     public static final String itestPath;
 
@@ -56,11 +63,12 @@ public abstract class WithJetty {
         this.jettyOption = jettyOption;
     }
 
-    @Rule
-    public ExpectedException exception = ExpectedException.none();
+    @BeforeAll
+    public void startJetty() throws Exception {
+        startJettyOneWaySSL();
+    }
 
-    @BeforeClass
-    public static void startJetty() throws Exception {
+    protected static void startJettyOneWaySSL() throws Exception {
         server = new Server();
 
         HttpConfiguration httpConfig = new HttpConfiguration();
@@ -129,6 +137,46 @@ public abstract class WithJetty {
         server.start();
     }
 
+    protected static void startJettyTwoWaySSL() throws Exception {
+        server = new Server();
+        int httpsPort = 8443;
+
+        // Setup HTTP Connector
+        HttpConfiguration httpConf = new HttpConfiguration();
+        httpConf.setSecurePort(httpsPort);
+        httpConf.setSecureScheme("https");
+
+        // Setup SSL
+        String keystore = WithJetty.class.getClassLoader().getResource("keystore.p12").getFile();
+        SslContextFactory.Server sslContextFactory = new SslContextFactory.Server();
+        sslContextFactory.setKeyStorePath(keystore);
+        sslContextFactory.setKeyStorePassword("test1234");
+        sslContextFactory.setTrustAll(true);
+        sslContextFactory.setNeedClientAuth(true);
+
+        // Setup HTTPS Configuration
+        HttpConfiguration httpsConf = new HttpConfiguration();
+        httpsConf.setSecureScheme("https");
+        httpsConf.setSecurePort(httpsPort);
+        httpsConf.addCustomizer(new SecureRequestCustomizer());
+
+        // Establish the HTTPS ServerConnector
+        ServerConnector httpsConnector = new ServerConnector(server,
+                new SslConnectionFactory(sslContextFactory, HttpVersion.HTTP_1_1.asString()),
+                new HttpConnectionFactory(httpsConf));
+        httpsConnector.setPort(httpsPort);
+
+        server.addConnector(httpsConnector);
+
+        // Add a Handlers for requests
+        HandlerList handlers = new HandlerList();
+        handlers.addHandler(new SecuredRedirectHandler());
+        handlers.addHandler(new HelloHandler());
+        server.setHandler(handlers);
+
+        server.start();
+    }
+
     private static void dontSendDateHeader(Server server) {
         // Remove the sending of date header since it makes testing of logging much harder
         for (Connector y : server.getConnectors()) {
@@ -140,7 +188,7 @@ public abstract class WithJetty {
         }
     }
 
-    @Before
+    @BeforeEach
     public void setUpBeforeTest() {
         if (jettyOption == RESET_REST_ASSURED_BEFORE_TEST) {
             RestAssured.reset();
@@ -155,8 +203,8 @@ public abstract class WithJetty {
         return canonicalPath.contains(itestPath);
     }
 
-    @AfterClass
-    public static void stopJetty() throws Exception {
+    @AfterAll
+    public void stopJetty() throws Exception {
         server.stop();
         server.join();
     }
@@ -166,5 +214,16 @@ public abstract class WithJetty {
     public enum JettyOption {
         RESET_REST_ASSURED_BEFORE_TEST,
         DONT_RESET_REST_ASSURED_BEFORE_TEST
+    }
+
+    private static class HelloHandler extends AbstractHandler {
+
+        @Override
+        public void handle(String target, Request baseRequest, HttpServletRequest request, HttpServletResponse response) throws IOException {
+            response.setContentType("text/json;charset=utf-8");
+            response.setStatus(HttpServletResponse.SC_OK);
+            baseRequest.setHandled(true);
+            response.getWriter().println("{\"hello\": \"Hello Scalatra\"}");
+        }
     }
 }

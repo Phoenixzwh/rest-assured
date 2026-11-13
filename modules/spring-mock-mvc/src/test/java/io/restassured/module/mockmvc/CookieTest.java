@@ -17,30 +17,57 @@
 // @formatter:off
 package io.restassured.module.mockmvc;
 
+import io.restassured.config.SessionConfig;
 import io.restassured.http.Cookie;
 import io.restassured.http.Cookies;
+import io.restassured.module.mockmvc.config.RestAssuredMockMvcConfig;
 import io.restassured.module.mockmvc.http.CookieController;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import io.restassured.module.mockmvc.response.MockMvcResponse;
+import io.restassured.module.mockmvc.specification.MockMvcRequestSpecification;import io.restassured.response.ResponseOptions;import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.hamcrest.Matchers.equalTo;
+import static io.restassured.matcher.RestAssuredMatchers.detailedCookie;
+import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;import static org.assertj.core.api.Assertions.assertThat;import static org.hamcrest.Matchers.equalTo;
 
 public class CookieTest {
 
-    @BeforeClass
+    @BeforeAll
     public static void configureMockMvcInstance() {
         RestAssuredMockMvc.standaloneSetup(new CookieController());
     }
 
-    @AfterClass
+    @AfterAll
     public static void restRestAssured() {
         RestAssuredMockMvc.reset();
     }
 
+    // Simulate test case from spring cloud contrats
+    @Test
+    public void validate_shouldReturnACookie() {
+        // given:
+        MockMvcRequestSpecification request = given()
+                .cookie("cookieName1", "foo")
+                .cookie("cookieName2", "bar");
+
+        // when:
+        ResponseOptions<?> response = given().spec(request)
+                .get("/cookie");
+
+        // then:
+        assertThat(response.statusCode()).isEqualTo(200);
+
+        // and:
+        String responseBody = response.getBody().asString();
+        assertThat(responseBody).isEqualTo("{\"cookieValue1\" : \"foo\", \"cookieValue2\" : \"bar\"}");
+    }
+    
     @Test public void
     can_send_cookie_using_cookie_class() {
         RestAssuredMockMvc.given().
@@ -117,6 +144,61 @@ public class CookieTest {
                 statusCode(200).
                 cookie("name", "John Doe").
                 cookie("project", "rest assured");
+    }
+    
+    @Test public void
+    session_id_is_the_value_of_the_jsessionid_cookie_by_default() {
+        MockMvcResponse response = RestAssuredMockMvc.given().
+                queryParam("cookieName1", "JSESSIONID").
+                queryParam("cookieValue1", "abc").
+                queryParam("cookieName2", "project").
+                queryParam("cookieValue2", "rest assured").
+        when().
+                get("/setCookies");
+
+        assertThat(response.sessionId()).isEqualTo("abc");
+        assertThat(response.getSessionId()).isEqualTo("abc");
+    }
+
+    @Test public void
+    session_id_is_the_value_of_the_cookie_named_by_the_session_config() {
+        String sessionId = RestAssuredMockMvc.given().
+                config(RestAssuredMockMvcConfig.config().sessionConfig(new SessionConfig("PHPSESSID", null))).
+                queryParam("cookieName1", "JSESSIONID").
+                queryParam("cookieValue1", "abc").
+                queryParam("cookieName2", "PHPSESSID").
+                queryParam("cookieValue2", "def").
+        when().
+                get("/setCookies").
+        then().
+                extract().sessionId();
+
+        assertThat(sessionId).isEqualTo("def");
+    }
+
+    @Test public void
+    can_receive_detailed_cookies() {
+        RestAssuredMockMvc.given().
+                queryParam("cookieName1", "name").
+                queryParam("cookieValue1", "John Doe").
+                queryParam("cookieName2", "project").
+                queryParam("cookieValue2", "rest assured").
+        when().
+                get("/setDetailedCookies").
+        then().
+                statusCode(200).
+                cookie("name", detailedCookie().
+                    value("John Doe").
+                    httpOnly(true).
+                    secured(true).
+                    sameSite("None").
+                    expiryDate(Date.from(ZonedDateTime.of(2023, 1, 1, 12, 30, 0, 0, ZoneId.of("Z")).toInstant()))).
+                cookie("project", detailedCookie().
+                    value("rest assured").
+                    httpOnly(false).
+                    secured(false).
+                    sameSite("Lax").
+                    expiryDate(Date.from(ZonedDateTime.of(2023, 1, 1, 12, 30, 0, 0, ZoneId.of("Z")).toInstant())));
     }
 }
 

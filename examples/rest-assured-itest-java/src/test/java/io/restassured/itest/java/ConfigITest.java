@@ -16,6 +16,7 @@
 
 package io.restassured.itest.java;
 
+import io.restassured.common.config.NumberReturnType;
 import io.restassured.RestAssured;
 import io.restassured.builder.ResponseSpecBuilder;
 import io.restassured.config.EncoderConfig;
@@ -24,8 +25,7 @@ import io.restassured.config.RedirectConfig;
 import io.restassured.config.RestAssuredConfig;
 import io.restassured.itest.java.support.WithJetty;
 import io.restassured.listener.ResponseValidationFailureListener;
-import io.restassured.path.json.config.JsonPathConfig;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -35,7 +35,7 @@ import static io.restassured.RestAssured.given;
 import static io.restassured.config.FailureConfig.failureConfig;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class ConfigITest extends WithJetty {
 
@@ -65,7 +65,7 @@ public class ConfigITest extends WithJetty {
     @Test
     public void supportsConfiguringJsonConfigProperties() throws Exception {
         given().
-                config(RestAssuredConfig.newConfig().jsonConfig(JsonConfig.jsonConfig().numberReturnType(JsonPathConfig.NumberReturnType.BIG_DECIMAL))).
+                config(RestAssuredConfig.newConfig().jsonConfig(JsonConfig.jsonConfig().numberReturnType(NumberReturnType.BIG_DECIMAL))).
         expect().
                 rootPath("store.book").
                 body("price.min()", is(new BigDecimal("8.95"))).
@@ -76,7 +76,7 @@ public class ConfigITest extends WithJetty {
 
     @Test
     public void supportsConfiguringJsonConfigStatically() throws Exception {
-        RestAssured.config = RestAssuredConfig.newConfig().jsonConfig(JsonConfig.jsonConfig().numberReturnType(JsonPathConfig.NumberReturnType.BIG_DECIMAL));
+        RestAssured.config = RestAssuredConfig.newConfig().jsonConfig(JsonConfig.jsonConfig().numberReturnType(NumberReturnType.BIG_DECIMAL));
 
         try {
         expect().

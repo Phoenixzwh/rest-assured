@@ -27,7 +27,7 @@ import io.restassured.specification.RequestSender;
 public interface FilterContext {
 
     /**
-     * Add a value that may be used be subsequent filters.
+     * Add a value that may be used by subsequent filters.
      *
      * @param name  The name of the value
      * @param value The value itself
@@ -50,6 +50,15 @@ public interface FilterContext {
      * @return <code>true</code> if the value exists in this filter context, <code>false</code> otherwise.
      */
     boolean hasValue(String name);
+
+    /**
+     * See if this filter context contain an entry with {@code name} equal to {@code value}.
+     *
+     * @param name  The name of the value
+     * @param value The value that the entry with {@code name} should be equal to.
+     * @return <code>true</code> if the value exists in this filter context and is equal to {@code value}, <code>false</code> otherwise.
+     */
+    boolean hasValue(String name, Object value);
 
     /**
      * Send a request to the same request path and with the same request method as the original request.

@@ -18,22 +18,21 @@ package io.restassured.itest.java;
 
 import io.restassured.RestAssured;
 import io.restassured.config.HttpClientConfig;
+import io.restassured.common.exception.TooManyRedirectsException;
 import io.restassured.config.RedirectConfig;
 import io.restassured.config.RestAssuredConfig;
 import io.restassured.itest.java.support.WithJetty;
-import org.apache.http.client.ClientProtocolException;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import static io.restassured.RestAssured.given;
-import static org.apache.http.client.params.ClientPNames.COOKIE_POLICY;
-import static org.apache.http.client.params.CookiePolicy.BROWSER_COMPATIBILITY;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 public class RedirectITest extends WithJetty {
 
     @Test
-    public void followsRedirectsByDefault() throws Exception {
+    public void followsRedirectsByDefault() {
         given().
                 param("url", "/hello").
         expect().
@@ -43,7 +42,7 @@ public class RedirectITest extends WithJetty {
     }
 
     @Test
-    public void doesntFollowRedirectsIfExplicitlySpecified() throws Exception {
+    public void doesntFollowRedirectsIfExplicitlySpecified() {
         given().
                 redirects().follow(false).
                 param("url", "/hello").
@@ -55,7 +54,7 @@ public class RedirectITest extends WithJetty {
     }
 
     @Test
-    public void doesntFollowRedirectsIfSpecifiedStaticallyInRedirectConfig() throws Exception {
+    public void doesntFollowRedirectsIfSpecifiedStaticallyInRedirectConfig() {
         RestAssured.config = RestAssuredConfig.newConfig().redirect(RedirectConfig.redirectConfig().followRedirects(false));
         try {
             given().
@@ -70,24 +69,26 @@ public class RedirectITest extends WithJetty {
         }
     }
 
-    @Test(expected = ClientProtocolException.class)
-    public void throwsClientProtocolExceptionIfMaxNumberOfRedirectAreExceeded() throws Exception {
+    @Test
+    public void throwsTooManyRedirectsExceptionIfMaxNumberOfRedirectAreExceeded() {
         RestAssured.config = RestAssuredConfig.config().redirect(RedirectConfig.redirectConfig().followRedirects(true).and().maxRedirects(0));
         try {
-            given().
+            assertThatThrownBy(() ->
+                given().
                     param("url", "/hello").
-            expect().
+                expect().
                     statusCode(302).
                     header("Location", is("http://localhost:8080/hello")).
-            when().
-                    get("/redirect");
+                when().
+                    get("/redirect")
+            ).isInstanceOf(TooManyRedirectsException.class).hasMessage("Maximum redirects (0) exceeded");
         } finally {
             RestAssured.reset();
         }
     }
 
     @Test
-    public void definingRedirectConfigInTheDSLOverridesSettingsFromDefaultConfig() throws Exception {
+    public void definingRedirectConfigInTheDSLOverridesSettingsFromDefaultConfig() {
         RestAssured.config = RestAssuredConfig.config().redirect(RedirectConfig.redirectConfig().followRedirects(false).and().maxRedirects(0));
         try {
             given().
@@ -104,7 +105,7 @@ public class RedirectITest extends WithJetty {
     }
 
     @Test
-    public void cookiesAreReceivedOnWhenServerReturns302() throws Exception {
+    public void cookiesAreReceivedOnWhenServerReturns302() {
         given().
                 redirects().follow(false).
                 param("url", "/hello").
@@ -117,9 +118,9 @@ public class RedirectITest extends WithJetty {
     }
 
     @Test
-    public void cookiesAreIncludedInRedirectsWhenCookiePolicyIsBrowserCompatibility() throws Exception {
+    public void cookiesAreIncludedInRedirectsWhenResponseCookiesAreKept() {
         given().
-                config(RestAssuredConfig.newConfig().httpClient(HttpClientConfig.httpClientConfig().setParam(COOKIE_POLICY, BROWSER_COMPATIBILITY))).
+                config(RestAssuredConfig.newConfig().httpClient(HttpClientConfig.httpClientConfig().keepResponseCookies(true))).
                 param("url", "/reflect").
         expect().
                 statusCode(200).

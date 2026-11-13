@@ -19,7 +19,7 @@
     <parent>
         <artifactId>rest-assured-parent</artifactId>
         <groupId>io.rest-assured</groupId>
-        <version>4.4.1-SNAPSHOT</version>
+        <version>7.0.0-SNAPSHOT</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
     <artifactId>modules</artifactId>
@@ -27,11 +27,17 @@
     <name>REST Assured Modules</name>
     <modules>
         <module>json-schema-validator</module>
+        <module>json-path-jayway</module>
+        <module>http-client-jdk</module>
+        <module>http-client-apache5</module>
         <module>spring-mock-mvc</module>
         <module>scala-support</module>
+        <module>scala-extensions</module>
         <module>spring-web-test-client</module>
         <module>spring-commons</module>
         <module>kotlin-extensions</module>
         <module>spring-mock-mvc-kotlin-extensions</module>
+        <module>spring-web-test-client-kotlin-extensions</module>
+        <module>rest-assured-openrewrite</module>
     </modules>
 </project>

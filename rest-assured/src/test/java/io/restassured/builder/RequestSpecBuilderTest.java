@@ -17,20 +17,36 @@
 package io.restassured.builder;
 
 import io.restassured.RestAssured;
+import io.restassured.authentication.NoAuthScheme;
+import io.restassured.config.RestAssuredConfig;
+import io.restassured.config.SessionConfig;
+import io.restassured.filter.Filter;
 import io.restassured.filter.log.RequestLoggingFilter;
+import io.restassured.http.Header;
+import io.restassured.http.Method;
 import io.restassured.internal.RequestSpecificationImpl;
-import org.junit.Assert;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.ExpectedException;
+import io.restassured.specification.QueryableRequestSpecification;
+import io.restassured.specification.RequestSpecification;
+import io.restassured.specification.SpecificationQuerier;
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
+import org.junit.jupiter.api.Test;
 
-import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.hasSize;
+import java.util.Collections;
+import java.util.concurrent.atomic.AtomicReference;
+
+import static io.restassured.RestAssured.given;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 public class RequestSpecBuilderTest {
-    @Rule
-    public ExpectedException exception = ExpectedException.none();
+    private static final Filter OK_RESPONSE = (requestSpec, responseSpec, ctx) -> new ResponseBuilder().setStatusCode(200).build();
 
+    private static void assertSendingDirectlyIsRejected(ThrowingCallable send) {
+        assertThatThrownBy(send)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("A request specification built by RequestSpecBuilder can't send a request or hold response expectations itself. " +
+                        "Use it with given().spec(specification) or given(specification), e.g. given().spec(specification).when().get(\"/path\").");
+    }
 
     @Test public void
     request_spec_doesnt_throw_NPE_when_logging_after_creation() {
@@ -38,26 +54,95 @@ public class RequestSpecBuilderTest {
     }
 
     @Test public void
-    request_spec_picks_up_filters_from_static_config() {
+    request_spec_throws_illegal_state_exception_when_sending_a_request_directly() {
+        RequestSpecification spec = new RequestSpecBuilder().addHeader("name", "value").addFilter(OK_RESPONSE).build();
+
+        assertSendingDirectlyIsRejected(() -> spec.when().get("http://localhost:8080/x"));
+        assertSendingDirectlyIsRejected(() -> spec.get("http://localhost:8080/x"));
+        assertSendingDirectlyIsRejected(spec::post);
+        assertSendingDirectlyIsRejected(() -> spec.request(Method.PUT, "http://localhost:8080/x"));
+        assertSendingDirectlyIsRejected(() -> spec.delete("http://localhost:8080/{id}", Collections.singletonMap("id", "1")));
+    }
+
+    @Test public void
+    request_spec_is_unchanged_after_sending_a_request_directly_is_rejected() {
+        RequestSpecificationImpl spec = (RequestSpecificationImpl) new RequestSpecBuilder().addFilter(OK_RESPONSE).build();
+
+        assertSendingDirectlyIsRejected(() -> spec.get("http://localhost:8080/{id}", Collections.singletonMap("id", "1")));
+        assertSendingDirectlyIsRejected(() -> spec.post("http://localhost:8080/{id}", "1"));
+
+        assertThat(spec.getPathParams()).isEmpty();
+        assertThat(spec.getMethod()).isNull();
+        assertThat(spec.getDefinedFilters()).containsExactly(OK_RESPONSE);
+    }
+
+    @Test public void
+    request_spec_throws_illegal_state_exception_when_defining_response_expectations_directly() {
+        RequestSpecification spec = new RequestSpecBuilder().build();
+
+        assertSendingDirectlyIsRejected(spec::then);
+        assertSendingDirectlyIsRejected(spec::expect);
+        assertSendingDirectlyIsRejected(spec::response);
+    }
+
+    @Test public void
+    request_spec_sends_request_when_added_to_given() {
+        AtomicReference<String> sentHeaders = new AtomicReference<>();
+        RequestSpecification spec = new RequestSpecBuilder().addHeader("name", "value").addFilter((requestSpec, responseSpec, ctx) -> {
+            sentHeaders.set(requestSpec.getHeaders().getValues("name").toString());
+            return OK_RESPONSE.filter(requestSpec, responseSpec, ctx);
+        }).build();
+
+        given().spec(spec).when().get("http://localhost:8080/x").then().statusCode(200);
+        assertThat(sentHeaders.get()).isEqualTo("[value]");
+        given(spec).when().get("http://localhost:8080/x").then().statusCode(200);
+        assertThat(sentHeaders.get()).isEqualTo("[value]");
+    }
+
+    @Test public void
+    request_spec_does_not_pick_up_filters_from_static_config() {
         RestAssured.filters(new RequestLoggingFilter());
         try {
             RequestSpecBuilder builder = new RequestSpecBuilder();
             RequestSpecificationImpl spec = (RequestSpecificationImpl) builder.build();
-            Assert.assertThat(spec.getDefinedFilters(), hasSize(1));
+            assertThat(spec.getDefinedFilters()).isEmpty();
         } finally {
             RestAssured.reset();
         }
     }
 
     @Test public void
-    request_spec_picks_up_headers_from_static_request_spec() {
+    request_spec_does_not_pick_up_headers_from_static_request_spec() {
         RestAssured.requestSpecification = new RequestSpecBuilder()
                 .addHeader("hello", "world")
                 .build();
         try {
             RequestSpecBuilder builder = new RequestSpecBuilder();
             RequestSpecificationImpl spec = (RequestSpecificationImpl) builder.build();
-            Assert.assertThat(spec.getHeaders().getValue("hello"), equalTo("world"));
+            assertThat(spec.getHeaders().hasHeaderWithName("hello")).isFalse();
+        } finally {
+            RestAssured.reset();
+        }
+    }
+
+    @Test public void
+    specification_querier_shows_only_what_was_set_on_the_builder() {
+        RestAssured.baseURI = "http://static.example.org";
+        RestAssured.port = 1234;
+        RestAssured.basePath = "/static";
+        RestAssured.authentication = RestAssured.basic("user", "password");
+        RestAssured.config = RestAssuredConfig.config().sessionConfig(SessionConfig.sessionConfig().sessionIdName("STATIC"));
+        RestAssured.proxy(8888);
+        try {
+            QueryableRequestSpecification spec = SpecificationQuerier.query(new RequestSpecBuilder().addHeader("name", "value").build());
+
+            assertThat(spec.getBaseUri()).isEqualTo(RestAssured.DEFAULT_URI);
+            assertThat(spec.getPort()).isEqualTo(8080);
+            assertThat(spec.getBasePath()).isEqualTo(RestAssured.DEFAULT_PATH);
+            assertThat(spec.getAuthenticationScheme()).isInstanceOf(NoAuthScheme.class);
+            assertThat(spec.getConfig().isUserConfigured()).isFalse();
+            assertThat(spec.getProxySpecification()).isNull();
+            assertThat(spec.getHeaders().asList()).extracting(Header::getName).containsExactly("name");
         } finally {
             RestAssured.reset();
         }

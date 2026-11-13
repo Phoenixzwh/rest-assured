@@ -19,6 +19,7 @@ package io.restassured.specification;
 import io.restassured.filter.log.LogDetail;
 import io.restassured.http.ContentType;
 import io.restassured.matcher.DetailedCookieMatcher;
+import io.restassured.matcher.ResponseAwareMatcher;
 import io.restassured.parsing.Parser;
 import io.restassured.response.Response;
 import io.restassured.response.ValidatableResponse;
@@ -319,6 +320,25 @@ public interface ResponseSpecification {
     ResponseSpecification header(String headerName, String expectedValue);
 
     /**
+     * Expect that a response header matches the supplied header name and {@link ResponseAwareMatcher}.
+     * <p>
+     * E.g. expect that the response of the POST request to "/redirect" contains a Location header that ends with
+     * the id returned in the response body:
+     * <pre>
+     * expect().header("Location", response -> endsWith("/redirect/" + response.path("id"))).when().post("/redirect");
+     * </pre>
+     * </p>
+     * <p>
+     * This is useful when you want to reuse the expectation in a {@link io.restassured.builder.ResponseSpecBuilder}.
+     * </p>
+     *
+     * @param headerName           The name of the expected header
+     * @param expectedValueMatcher The {@link ResponseAwareMatcher} that creates the Hamcrest matcher based on the response
+     * @return the response specification
+     */
+    ResponseSpecification header(String headerName, ResponseAwareMatcher<Response> expectedValueMatcher);
+
+    /**
      * Expect that response cookies matches those specified in a Map.
      * <p>
      * E.g. expect that the response of the GET request to "/something" contains cookies <tt>cookieName1=cookieValue1</tt>
@@ -474,18 +494,6 @@ public interface ResponseSpecification {
     ResponseSpecification rootPath(String rootPath, List<Argument> arguments);
 
     /**
-     * @param rootPath  The root path to use.
-     * @param arguments The list of substitution arguments. The path and arguments follows the standard <a href="https://docs.oracle.com/javase/7/docs/api/java/util/Formatter.html#syntax">formatting syntax</a> of Java..
-     *
-     * @see #rootPath(String, List)
-     * @deprecated Use {@link #rootPath(String, List)} (String)} instead
-     */
-    @Deprecated
-    default ResponseSpecification root(String rootPath, List<Argument> arguments) {
-        return rootPath(rootPath);
-    }
-
-    /**
      * Set the root path of the response body so that you don't need to write the entire path for each expectation.
      * E.g. instead of writing:
      * <p/>
@@ -517,16 +525,6 @@ public interface ResponseSpecification {
     ResponseSpecification rootPath(String rootPath);
 
     /**
-     * @param rootPath The root path.
-     * @see #rootPath(String)
-     * @deprecated Use {@link #rootPath(String)} (String)} instead
-     */
-    @Deprecated
-    default ResponseSpecification root(String rootPath) {
-        return rootPath(rootPath);
-    }
-
-    /**
      * Reset the root path of the response body so that you don't need to write the entire path for each expectation.
      * For example:
      * <p/>
@@ -542,19 +540,11 @@ public interface ResponseSpecification {
      *          body("w.something2", is(..)).
      * </pre>
      * <p/>
-     * This is the same as calling <code>rootPath("")</code> but less verbose and the it communicates intent better.
+     * This is the same as calling <code>rootPath("")</code> but less verbose and it communicates intent better.
      *
      * @see #rootPath(String)
      */
     ResponseSpecification noRootPath();
-
-    /**
-     * @deprecated Use {@link #noRootPath()} instead
-     */
-    @Deprecated
-    default ResponseSpecification noRoot() {
-        return noRootPath();
-    }
 
     /**
      * Append the given path to the root path of the response body so that you don't need to write the entire path for each expectation.
@@ -624,25 +614,6 @@ public interface ResponseSpecification {
     ResponseSpecification appendRootPath(String pathToAppend, List<Argument> arguments);
 
     /**
-     * @param pathToAppend The root path to append.
-     * @see #appendRootPath(String, List)
-     * @deprecated Use {@link #appendRootPath(String, List)} instead
-     */
-    default ResponseSpecification appendRoot(String pathToAppend, List<Argument> arguments) {
-        return appendRootPath(pathToAppend, arguments);
-    }
-
-    /**
-     * @param pathToAppend The root path to append.
-     * @see #appendRootPath(String)
-     * @deprecated Use {@link #appendRootPath(String)} instead
-     */
-    @Deprecated
-    default ResponseSpecification appendRoot(String pathToAppend) {
-        return detachRootPath(pathToAppend);
-    }
-
-    /**
      * Detach the given path from the root path.
      * E.g. instead of writing:
      * <p/>
@@ -658,7 +629,7 @@ public interface ResponseSpecification {
      *          body("lastName", is(..)).
      * </pre>
      * <p/>
-     * you can use a append root and do:
+     * you can use a detach root and do:
      * <pre>
      * when().
      *          get(..);
@@ -674,17 +645,6 @@ public interface ResponseSpecification {
      * @param pathToDetach The root path to detach.
      */
     ResponseSpecification detachRootPath(String pathToDetach);
-
-    /**
-     *
-     * @param pathToDetach The root path to detach.
-     * @see #detachRootPath(String)
-     * @deprecated Use {@link #detachRootPath(String)} instead
-     */
-    @Deprecated
-    default ResponseSpecification detachRoot(String pathToDetach) {
-        return detachRootPath(pathToDetach);
-    }
 
     /**
      * Set the response content type to be <code>contentType</code>.
@@ -942,10 +902,11 @@ public interface ResponseSpecification {
      * This is useful when you want to reuse multiple different expectations in several tests.
      * <p/>
      * The specification passed to this method is merged with the current specification. Note that the supplied specification
-     * can overwrite data in the current specification. The following settings are overwritten:
+     * can overwrite data in the current specification. The following settings are overwritten when the supplied specification sets them,
+     * and otherwise kept:
      * <ul>
      * <li>Content type</li>
-     * <li>Root path</
+     * <li>Root path</li>
      * <li>Status code</li>
      * <li>Status line</li>
      * </ul>
@@ -1011,4 +972,16 @@ public interface ResponseSpecification {
      * @param logDetail The log detail
      */
     ResponseSpecification logDetail(LogDetail logDetail);
+
+    /**
+     * Add user message to final mismatch description.
+     * <p/>
+     * This is useful when you need to associate a mismatch description with additional user information. For example, in parallel execution.
+     * <p/>
+     * Note, if you want to add a description for certain matching, not for all, you should use something like
+     * Hamcrest wrapper matcher - {@link org.hamcrest.CoreMatchers#describedAs}.
+     *
+     * @param message The user message
+     */
+    ResponseSpecification onFailMessage(String message);
 }

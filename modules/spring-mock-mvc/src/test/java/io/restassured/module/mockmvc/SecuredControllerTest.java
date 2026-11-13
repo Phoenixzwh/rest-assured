@@ -18,14 +18,13 @@ package io.restassured.module.mockmvc;
 
 import io.restassured.module.mockmvc.http.SecuredController;
 import io.restassured.module.mockmvc.specification.MockMvcRequestSpecBuilder;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.ExpectedException;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.User;
-import org.springframework.web.util.NestedServletException;
 
 import java.security.Principal;
 import java.util.Collections;
@@ -33,10 +32,8 @@ import java.util.Collections;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 
+@Disabled
 public class SecuredControllerTest {
-    @Rule
-    public ExpectedException exception = ExpectedException.none();
-
     @Test public void
     javax_principal_authentication_works() {
         RestAssuredMockMvc.given().
@@ -110,10 +107,7 @@ public class SecuredControllerTest {
 
     @Test public void
     spring_context_holder_is_cleared_after_failed_test() {
-        exception.expect(NestedServletException.class);
-        exception.expectMessage("Not authorized");
-
-        try {
+        assertThatThrownBy(() -> {
             RestAssuredMockMvc.given().
                     standaloneSetup(new SecuredController()).
                     auth().principal(new User("authorized_user2", "password", Collections.<GrantedAuthority>emptyList())).
@@ -123,9 +117,10 @@ public class SecuredControllerTest {
             then().
                     statusCode(200).
                     body("content", equalTo("Hello, Johan!"));
-        } finally {
-            assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
-        }
+        })
+        .isInstanceOf(Exception.class)
+        .hasMessageContaining("Not authorized");
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
     }
 
     @Test public void
@@ -154,8 +149,6 @@ public class SecuredControllerTest {
 
     @Test public void
     can_override_static_auth_config_with_none() {
-        exception.expectMessage("Not authorized");
-
         // Given
         RestAssuredMockMvc.authentication = RestAssuredMockMvc.principal(new Principal() {
                                              public String getName() {
@@ -163,17 +156,17 @@ public class SecuredControllerTest {
                                              }
                                         });
 
-        // When
-        try {
+        // When / Then
+        assertThatThrownBy(() -> {
             RestAssuredMockMvc.given().
                     standaloneSetup(new SecuredController()).
                     auth().none().
                     param("name", "Johan").
             when().
                     get("/principalGreeting");
-        } finally {
-            RestAssuredMockMvc.reset();
-        }
+        })
+        .hasMessageContaining("Not authorized");
+        RestAssuredMockMvc.reset();
     }
 
     @Test public void

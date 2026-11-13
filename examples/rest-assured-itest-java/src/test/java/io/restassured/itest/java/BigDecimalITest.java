@@ -16,13 +16,13 @@
 
 package io.restassured.itest.java;
 
+import io.restassured.common.config.NumberReturnType;
 import io.restassured.RestAssured;
 import io.restassured.itest.java.support.WithJetty;
-import io.restassured.path.json.config.JsonPathConfig;
-import org.apache.http.HttpStatus;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 
@@ -34,20 +34,20 @@ import static org.hamcrest.Matchers.hasItems;
 
 public class BigDecimalITest extends WithJetty {
 
-    @After public void
+    @AfterEach public void
     rest_assured_is_reset_after_each_test() {
         RestAssured.reset();
     }
 
-    @Before public void
+    @BeforeEach public void
     given_rest_assured_is_configured_with_big_decimal_as_return_type() {
-        RestAssured.config = RestAssured.config().jsonConfig(jsonConfig().numberReturnType(JsonPathConfig.NumberReturnType.BIG_DECIMAL));
+        RestAssured.config = RestAssured.config().jsonConfig(jsonConfig().numberReturnType(NumberReturnType.BIG_DECIMAL));
     }
 
     @Test public void
     big_decimal_works_when_configured_in_given_clause() {
         given().
-                config(RestAssured.config().jsonConfig(jsonConfig().numberReturnType(JsonPathConfig.NumberReturnType.BIG_DECIMAL))).
+                config(RestAssured.config().jsonConfig(jsonConfig().numberReturnType(NumberReturnType.BIG_DECIMAL))).
         when().
                 get("/amount").
         then().
@@ -56,7 +56,7 @@ public class BigDecimalITest extends WithJetty {
 
     @Test public void
     big_decimal_works_when_configured_statically() {
-        RestAssured.config = RestAssured.config().jsonConfig(jsonConfig().numberReturnType(JsonPathConfig.NumberReturnType.BIG_DECIMAL));
+        RestAssured.config = RestAssured.config().jsonConfig(jsonConfig().numberReturnType(NumberReturnType.BIG_DECIMAL));
 
         when().
                 get("/amount").
@@ -66,12 +66,12 @@ public class BigDecimalITest extends WithJetty {
 
     @Test public void
     floats_are_used_as_big_decimal_in_anonymous_list_with_numbers_when_configured_accordingly() {
-        RestAssured.config = RestAssured.config().jsonConfig(jsonConfig().numberReturnType(JsonPathConfig.NumberReturnType.BIG_DECIMAL));
+        RestAssured.config = RestAssured.config().jsonConfig(jsonConfig().numberReturnType(NumberReturnType.BIG_DECIMAL));
 
         when().
                 get("/anonymous_list_with_numbers").
         then().
-                statusCode(HttpStatus.SC_OK).
+                statusCode(200).
                 body("$", hasItems(100, 50, BigDecimal.valueOf(31.0)));
     }
 }

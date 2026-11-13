@@ -16,18 +16,36 @@
 
 package io.restassured.module.mockmvc;
 
+import com.fasterxml.jackson.annotation.JsonValue;
+import io.restassured.http.Method;
 import io.restassured.module.mockmvc.http.GreetingController;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.Supplier;
+
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.equalTo;
 
 public class MockMvcPathParamTest {
+    @BeforeEach
+    public void configureMockMvcInstance() {
+        RestAssuredMockMvc.standaloneSetup(new GreetingController());
+    }
+
+    @AfterEach
+    public void restRestAssured() {
+        RestAssuredMockMvc.reset();
+    }
 // @formatter:off
 
     @Test
-    public void unnamed_path_param_works() throws Exception {
+    public void unnamed_path_param_works() {
         RestAssuredMockMvc.given().
-                standaloneSetup(new GreetingController()).
                 queryParam("name", "John").
         when().
                 get("/{x}", "greeting").
@@ -36,4 +54,210 @@ public class MockMvcPathParamTest {
                 body("content", equalTo("Hello, John!"));
     }
 // @formatter:on
+
+    @Test
+    public void should_succeed_with_get_method_when_named_parameter() {
+        RestAssuredMockMvc.given()
+                .pathParam("name", "John")
+            .when()
+                .get("/greeting/{name}")
+            .then()
+                .body("id", equalTo(1))
+                .body("content", equalTo("Hello, John!"));
+    }
+
+    @Test
+    public void should_succeed_with_get_method_when_unnamed_parameter() {
+        RestAssuredMockMvc.given()
+            .when()
+                .get("/greeting/{name}", "John")
+            .then()
+                .body("id", equalTo(1))
+                .body("content", equalTo("Hello, John!"));
+    }
+
+    @Test
+    public void should_succeed_with_get_method_with_named_parameter_and_unnamed_parameter() {
+        RestAssuredMockMvc.given()
+                .pathParam("date", "2023-08-31")
+            .when()
+                .get("/greeting/{name}/{date}", "John")
+            .then()
+                .body("id", equalTo(1))
+                .body("content", equalTo("Hello, John! Today is 2023-08-31"));
+    }
+
+    @Test
+    public void should_succeed_with_get_method_when_named_parameter_is_single_map_value() {
+        final Map<String, Object> pathParams = Collections.singletonMap("name", "John");
+        RestAssuredMockMvc.given()
+                .pathParams(pathParams)
+            .when()
+                .get("/greeting/{name}")
+            .then()
+                .body("id", equalTo(1))
+                .body("content", equalTo("Hello, John!"));
+    }
+
+    @Test
+    public void should_succeed_with_get_method_when_named_parameter_is_multi_map_value() {
+        final Map<String, Object> pathParams = new HashMap<>();
+        pathParams.put("name", "John");
+        pathParams.put("date", "2023-08-30");
+
+        RestAssuredMockMvc.given()
+                .pathParams(pathParams)
+            .when()
+                .get("/greeting/{name}/{date}")
+            .then()
+                .body("id", equalTo(1))
+                .body("content", equalTo("Hello, John! Today is 2023-08-30"));
+    }
+
+    @Test
+    public void should_succeed_with_get_method_when_named_parameter_per_add_method() {
+        RestAssuredMockMvc.given()
+                .pathParam("name", "John")
+                .pathParam("date", "2023-08-30")
+            .when()
+                .get("/greeting/{name}/{date}")
+            .then()
+                .body("id", equalTo(1))
+                .body("content", equalTo("Hello, John! Today is 2023-08-30"));
+    }
+
+    @Test
+    public void should_fail_with_get_method_when_does_not_has_params() {
+        // Supplier created to fix sonar error.
+        Supplier<Void> restAssuredExecutionSupplier = () -> {
+            RestAssuredMockMvc.given()
+                .when()
+                    .get("/greeting/{name}/{date}")
+                .then();
+
+            return null;
+        };
+
+        assertThatThrownBy(restAssuredExecutionSupplier::get)
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("No values were found for the request's pathParams.");
+    }
+
+    @Test
+    public void should_succeed_with_request_method_when_named_parameter() {
+        RestAssuredMockMvc.given()
+                .pathParam("name", "John")
+            .when()
+                .request(Method.GET, "/greeting/{name}")
+            .then()
+                .body("id", equalTo(1))
+                .body("content", equalTo("Hello, John!"));
+    }
+
+    @Test
+    public void should_succeed_with_request_method_when_unnamed_parameter() {
+        RestAssuredMockMvc.given()
+            .when()
+                .request(Method.GET, "/greeting/{name}", "John")
+            .then()
+                .body("id", equalTo(1))
+                .body("content", equalTo("Hello, John!"));
+    }
+
+    @Test
+    public void should_succeed_with_request_method_with_named_parameter_and_unnamed_parameter() {
+        RestAssuredMockMvc.given()
+                .pathParam("date", "2023-08-31")
+            .when()
+                .request(Method.GET, "/greeting/{name}/{date}", "John")
+            .then()
+                .body("id", equalTo(1))
+                .body("content", equalTo("Hello, John! Today is 2023-08-31"));
+    }
+
+    @Test
+    public void should_succeed_with_request_method_when_named_parameter_is_single_map_value() {
+        final Map<String, Object> pathParams = Collections.singletonMap("name", "John");
+        RestAssuredMockMvc.given()
+                .pathParams(pathParams)
+            .when()
+                .request(Method.GET, "/greeting/{name}")
+            .then()
+                .body("id", equalTo(1))
+                .body("content", equalTo("Hello, John!"));
+    }
+
+    @Test
+    public void should_succeed_with_request_method_when_named_parameter_is_multi_map_value() {
+        final Map<String, Object> pathParams = new HashMap<>();
+        pathParams.put("name", "John");
+        pathParams.put("date", "2023-08-30");
+
+        RestAssuredMockMvc.given()
+                .pathParams(pathParams)
+            .when()
+                .request(Method.GET, "/greeting/{name}/{date}")
+            .then()
+                .body("id", equalTo(1))
+                .body("content", equalTo("Hello, John! Today is 2023-08-30"));
+    }
+
+    @Test
+    public void should_succeed_with_request_method_when_named_parameter_as_value_pairs() {
+        RestAssuredMockMvc.given()
+                .pathParams("name", "John", "date", "2023-08-30")
+            .when()
+                .request(Method.GET, "/greeting/{name}/{date}")
+            .then()
+                .body("id", equalTo(1))
+                .body("content", equalTo("Hello, John! Today is 2023-08-30"));
+    }
+
+    @Test
+    public void should_succeed_with_request_method_when_has_only_unnamed_parameter() {
+        RestAssuredMockMvc.given()
+            .when()
+                .request(Method.GET, "/greeting/{name}/{date}", "John", "2023-08-30")
+            .then()
+                .body("id", equalTo(1))
+                .body("content", equalTo("Hello, John! Today is 2023-08-30"));
+    }
+
+    @Test
+    public void should_fail_with_request_method_when_does_not_has_params() {
+        // Supplier created to fix sonar error.
+        Supplier<Void> restAssuredExecutionSupplier = () -> {
+            RestAssuredMockMvc.given()
+                .when()
+                    .request(Method.GET, "/greeting/{name}/{date}")
+                .then();
+
+            return null;
+        };
+
+        assertThatThrownBy(restAssuredExecutionSupplier::get)
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("No values were found for the request's pathParams.");
+    }
+
+    @Test
+    public void unnamed_path_param_value_object_is_serialized_like_a_named_path_param() {
+        RestAssuredMockMvc.given()
+            .when()
+                .get("/greeting/{name}/{date}", new Name("John"), "today")
+            .then()
+                .body("content", equalTo("Hello, John! Today is today"));
+    }
+
+    public record Name(String value) {
+        @JsonValue
+        public String value() {
+            return value;
+        }
+
+        @Override
+        public String toString() {
+            return "Name[" + value + "]";
+        }
+    }
 }

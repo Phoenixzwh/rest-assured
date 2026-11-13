@@ -28,26 +28,26 @@ import io.restassured.itest.java.objects.Message;
 import io.restassured.itest.java.support.MyEnum;
 import io.restassured.itest.java.support.WithJetty;
 import io.restassured.mapper.ObjectMapperType;
-import io.restassured.path.json.mapper.factory.DefaultJackson2ObjectMapperFactory;
+import io.restassured.common.mapper.factory.DefaultJackson2ObjectMapperFactory;
 import io.restassured.specification.RequestSpecification;
 import org.apache.commons.io.IOUtils;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.ExpectedException;
+import org.junit.jupiter.api.Test;
+
+import java.io.File;
+import java.nio.charset.StandardCharsets;
 
 import static io.restassured.RestAssured.config;
 import static io.restassured.RestAssured.given;
 import static io.restassured.config.MultiPartConfig.multiPartConfig;
-import static org.apache.http.entity.mime.HttpMultipartMode.BROWSER_COMPATIBLE;
+import static io.restassured.config.MultipartMode.BROWSER_COMPATIBLE;
+import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.*;
 
 public class MultiPartUploadITest extends WithJetty {
 
-    @Rule
-    public ExpectedException exception = ExpectedException.none();
-
     @Test
-    public void multiPartUploadingWorksForByteArrays() throws Exception {
+    void multiPartUploadingWorksForByteArrays() throws Exception {
         // Given
         final byte[] bytes = IOUtils.toByteArray(getClass().getResourceAsStream("/car-records.xsd"));
 
@@ -62,32 +62,60 @@ public class MultiPartUploadITest extends WithJetty {
     }
 
     @Test
-    public void multiPartUploadingWorksForStrings() throws Exception {
-       // When
-       given().
-               multiPart("text", "Some text").
-       expect().
-               statusCode(200).
-               body(is("Some text")).
-       when().
-               post("/multipart/text");
+    void byteArrayMultiPartInAReusedSpecificationIsSentWithItsContentEveryTime() {
+        // Given
+        RequestSpecification spec = new RequestSpecBuilder().addMultiPart("file", "myFile", "hello".getBytes(StandardCharsets.UTF_8)).build();
+
+        // When
+        String first = given().spec(spec).post("/multipart/file").then().statusCode(200).extract().asString();
+        String second = given().spec(spec).post("/multipart/file").then().statusCode(200).extract().asString();
+
+        // Then
+        assertThat(first).isEqualTo("hello");
+        assertThat(second).isEqualTo("hello");
     }
 
     @Test
-    public void multiPartUploadingSupportsOtherSubTypesThanFormData() throws Exception {
-       // When
-       given().
-               contentType("multipart/mixed").
-               multiPart("text", "Some text").
-       expect().
-               statusCode(200).
-               body(is("Some text")).
-       when().
-               post("/multipart/text");
+    void byteArrayMultiPartInAReusedRequestSpecificationIsSentWithItsContentEveryTime() {
+        // Given
+        RequestSpecification request = given().multiPart("file", "myFile", "hello".getBytes(StandardCharsets.UTF_8));
+
+        // When
+        String first = request.post("/multipart/file").then().statusCode(200).extract().asString();
+        String second = request.post("/multipart/file").then().statusCode(200).extract().asString();
+
+        // Then
+        assertThat(first).isEqualTo("hello");
+        assertThat(second).isEqualTo("hello");
     }
 
     @Test
-    public void multiPartUploadingSupportsSpecifyingDefaultSubtype() throws Exception {
+    void multiPartUploadingWorksForStrings() {
+        // When
+        given().
+                multiPart("text", "Some text").
+        expect().
+                statusCode(200).
+                body(is("Some text")).
+        when().
+                post("/multipart/text");
+    }
+
+    @Test
+    void multiPartUploadingSupportsOtherSubTypesThanFormData() {
+        // When
+        given().
+                contentType("multipart/mixed").
+                multiPart("text", "Some text").
+        expect().
+                statusCode(200).
+                body(is("Some text")).
+        when().
+                post("/multipart/text");
+    }
+
+    @Test
+    void multiPartUploadingSupportsSpecifyingDefaultSubtype() {
        // When
        given().
                config(config().multiPartConfig(multiPartConfig().defaultSubtype("mixed"))).
@@ -101,7 +129,7 @@ public class MultiPartUploadITest extends WithJetty {
     }
 
     @Test
-    public void multiPartUploadingSupportsSpecifyingCharset() throws Exception {
+    void multiPartUploadingSupportsSpecifyingCharset() {
        // When
        given().
                contentType("multipart/mixed; charset=US-ASCII").
@@ -115,7 +143,7 @@ public class MultiPartUploadITest extends WithJetty {
     }
 
     @Test
-    public void explicitMultipartContentTypeOverridesDefaultSubtype() throws Exception {
+    void explicitMultipartContentTypeOverridesDefaultSubtype() {
        // When
        given().
                contentType("multipart/form-data").
@@ -130,7 +158,7 @@ public class MultiPartUploadITest extends WithJetty {
     }
 
     @Test
-    public void multipartContentTypeSetBySpecificationOverridesDefaultSubtype() throws Exception {
+    void multipartContentTypeSetBySpecificationOverridesDefaultSubtype() {
        // When
        given().
                spec(new RequestSpecBuilder().setContentType("multipart/form-data").build()).
@@ -145,7 +173,7 @@ public class MultiPartUploadITest extends WithJetty {
     }
 
     @Test
-    public void multiPartUploadingWorksForJsonObjects() throws Exception {
+    void multiPartUploadingWorksForJsonObjects() {
         // Given
         final Message message = new Message();
         message.setMessage("Hello World");
@@ -161,7 +189,7 @@ public class MultiPartUploadITest extends WithJetty {
     }
 
     @Test
-    public void multiPartUploadingWorksForJsonObjectsWhenMimeTypeIsSpecified() throws Exception {
+    void multiPartUploadingWorksForJsonObjectsWhenMimeTypeIsSpecified() {
        // Given
        final Message message = new Message();
        message.setMessage("Hello World");
@@ -177,7 +205,7 @@ public class MultiPartUploadITest extends WithJetty {
     }
 
     @Test
-    public void multiPartUploadingWorksForXmlObjectsWhenMimeTypeIsSpecified() throws Exception {
+    void multiPartUploadingWorksForXmlObjectsWhenMimeTypeIsSpecified() {
        // Given
        final Greeting greeting = new Greeting();
        greeting.setFirstName("John");
@@ -194,7 +222,7 @@ public class MultiPartUploadITest extends WithJetty {
     }
 
     @Test
-    public void multiPartSupportsSpecifyingAnObjectMapperTypeToMultiPartSpecBuilder() throws Exception {
+    void multiPartSupportsSpecifyingAnObjectMapperTypeToMultiPartSpecBuilder() {
         // Given
         final Greeting greeting = new Greeting();
         greeting.setFirstName("John");
@@ -214,7 +242,7 @@ public class MultiPartUploadITest extends WithJetty {
     }
 
     @Test
-    public void multiPartSupportsSpecifyingAnObjectMapperToMultiPartSpecBuilder() throws Exception {
+    void multiPartSupportsSpecifyingAnObjectMapperToMultiPartSpecBuilder() {
         // Given
         final Greeting greeting = new Greeting();
         greeting.setFirstName("John");
@@ -234,7 +262,7 @@ public class MultiPartUploadITest extends WithJetty {
     }
 
     @Test
-    public void multiPartObjectMapperTypeHavePrecedenceOverMimeType() throws Exception {
+    void multiPartObjectMapperTypeHavePrecedenceOverMimeType() {
         // Given
         final Greeting greeting = new Greeting();
         greeting.setFirstName("John");
@@ -254,7 +282,7 @@ public class MultiPartUploadITest extends WithJetty {
     }
 
     @Test
-    public void multiPartUploadingUsesEncoderConfigToKnowHowToSerializeCustomMimeTypesToJson() throws Exception {
+    void multiPartUploadingUsesEncoderConfigToKnowHowToSerializeCustomMimeTypesToJson() {
          // Given
        final Greeting greeting = new Greeting();
        greeting.setFirstName("John");
@@ -275,7 +303,7 @@ public class MultiPartUploadITest extends WithJetty {
     }
 
     @Test
-    public void multiPartUploadingUsesEncoderConfigToKnowHowToSerializeCustomMimeTypesToXml() throws Exception {
+    void multiPartUploadingUsesEncoderConfigToKnowHowToSerializeCustomMimeTypesToXml() {
          // Given
        final Greeting greeting = new Greeting();
        greeting.setFirstName("John");
@@ -296,28 +324,28 @@ public class MultiPartUploadITest extends WithJetty {
     }
 
     @Test
-    public void multiPartUploadingThrowsExceptionWhenUsingEncoderConfigToSpecifyNonSerializableContentType() throws Exception {
+    void multiPartUploadingThrowsExceptionWhenUsingEncoderConfigToSpecifyNonSerializableContentType() {
         // Given
-        exception.expect(IllegalArgumentException.class);
-        exception.expectMessage("Cannot serialize because cannot determine how to serialize content-type application/vnd.ms-excel as HTML (no serializer supports this format)");
-
         final Greeting greeting = new Greeting();
         greeting.setFirstName("John");
         greeting.setLastName("Doe");
-
-       // When
-       given().
-               config(config().encoderConfig(EncoderConfig.encoderConfig().encodeContentTypeAs("application/vnd.ms-excel", ContentType.HTML))).
-               multiPart(new MultiPartSpecBuilder(greeting)
-                       .fileName("RoleBasedAccessFeaturePlan.csv")
-                       .controlName("text")
-                       .mimeType("application/vnd.ms-excel").build()).
-       when().
-               post("/multipart/text");
+        Throwable thrown = catchThrowable(() ->
+            given().
+                config(config().encoderConfig(EncoderConfig.encoderConfig().encodeContentTypeAs("application/vnd.ms-excel", ContentType.HTML))).
+                multiPart(new MultiPartSpecBuilder(greeting)
+                        .fileName("RoleBasedAccessFeaturePlan.csv")
+                        .controlName("text")
+                        .mimeType("application/vnd.ms-excel").build()).
+            when().
+                post("/multipart/text")
+        );
+        assertThat(thrown)
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Cannot serialize because cannot determine how to serialize content-type application/vnd.ms-excel as HTML (no serializer supports this format)");
     }
 
    @Test
-   public void multiPartUploadingWorksForMultipleStrings() throws Exception {
+   void multiPartUploadingWorksForMultipleStrings() {
        // When
        given().
                multiPart("text", "Some text").
@@ -330,7 +358,7 @@ public class MultiPartUploadITest extends WithJetty {
     }
 
     @Test
-    public void multiPartUploadingWorksForByteArrayAndStrings() throws Exception {
+    void multiPartUploadingWorksForByteArrayAndStrings() throws Exception {
         // Given
         final byte[] bytes = IOUtils.toByteArray(getClass().getResourceAsStream("/car-records.xsd"));
 
@@ -346,7 +374,7 @@ public class MultiPartUploadITest extends WithJetty {
     }
 
     @Test
-    public void multiPartUploadingWorksForByteArrayAndFormParams() throws Exception {
+    void multiPartUploadingWorksForByteArrayAndFormParams() throws Exception {
         // Given
         final byte[] bytes = IOUtils.toByteArray(getClass().getResourceAsStream("/car-records.xsd"));
 
@@ -362,7 +390,7 @@ public class MultiPartUploadITest extends WithJetty {
     }
 
     @Test
-    public void multiPartUploadingWorksForByteArrayAndNumberFormParams() throws Exception {
+    void multiPartUploadingWorksForByteArrayAndNumberFormParams() throws Exception {
         // Given
         final byte[] bytes = IOUtils.toByteArray(getClass().getResourceAsStream("/car-records.xsd"));
 
@@ -378,7 +406,7 @@ public class MultiPartUploadITest extends WithJetty {
     }
 
     @Test
-    public void multiPartUploadingWorksForByteArrayAndEnumFormParams() throws Exception {
+    void multiPartUploadingWorksForByteArrayAndEnumFormParams() throws Exception {
         // Given
         final byte[] bytes = IOUtils.toByteArray(getClass().getResourceAsStream("/car-records.xsd"));
 
@@ -394,7 +422,7 @@ public class MultiPartUploadITest extends WithJetty {
     }
 
     @Test
-    public void multiPartUploadingWorksForFormParamsAndByteArray() throws Exception {
+    void multiPartUploadingWorksForFormParamsAndByteArray() throws Exception {
         // Given
         final byte[] bytes = IOUtils.toByteArray(getClass().getResourceAsStream("/car-records.xsd"));
 
@@ -410,7 +438,7 @@ public class MultiPartUploadITest extends WithJetty {
     }
 
     @Test
-    public void multiPartUploadingWorksForByteArrayAndParams() throws Exception {
+    void multiPartUploadingWorksForByteArrayAndParams() throws Exception {
         // Given
         final byte[] bytes = IOUtils.toByteArray(getClass().getResourceAsStream("/car-records.xsd"));
 
@@ -426,7 +454,7 @@ public class MultiPartUploadITest extends WithJetty {
     }
 
     @Test
-    public void multiPartUploadingWorksForParamsAndByteArray() throws Exception {
+    void multiPartUploadingWorksForParamsAndByteArray() throws Exception {
         // Given
         final byte[] bytes = IOUtils.toByteArray(getClass().getResourceAsStream("/car-records.xsd"));
 
@@ -442,7 +470,7 @@ public class MultiPartUploadITest extends WithJetty {
     }
 
     @Test
-    public void bytesAndFormParamUploadingWorkUsingRequestBuilder() throws Exception {
+    void bytesAndFormParamUploadingWorkUsingRequestBuilder() throws Exception {
         final byte[] bytes = IOUtils.toByteArray(getClass().getResourceAsStream("/car-records.xsd"));
         final RequestSpecification spec = new RequestSpecBuilder().addMultiPart("file", "myFile", bytes).addFormParam("text", "Some text").build();
 
@@ -456,17 +484,17 @@ public class MultiPartUploadITest extends WithJetty {
     }
 
     @Test
-    public void multiPartUploadingDoesntWorkForDelete() throws Exception {
-         given().
-                 multiPart("text", "Some text").
-         when().
-                 delete("/multipart/text").
-         then().
-                 statusCode(500); // Scalatra doesn't seem to handle multipart delete requests?
+    void multiPartUploadingDoesntWorkForDelete() {
+        given().
+                multiPart("text", "Some text").
+        when().
+                delete("/multipart/text").
+        then().
+                statusCode(500); // Scalatra doesn't seem to handle multipart delete requests?
     }
 
     @Test
-    public void multiPartByteArrayUploadingWorksUsingPut() throws Exception {
+    void multiPartByteArrayUploadingWorksUsingPut() throws Exception {
         // Given
         final byte[] bytes = IOUtils.toByteArray(getClass().getResourceAsStream("/car-records.xsd"));
 
@@ -481,7 +509,7 @@ public class MultiPartUploadITest extends WithJetty {
     }
 
     @Test
-    public void multiPartByteArrayUploadingWorksUsingGet() throws Exception {
+    void multiPartByteArrayUploadingWorksUsingGet() throws Exception {
         // Given
         final byte[] bytes = IOUtils.toByteArray(getClass().getResourceAsStream("/car-records.xsd"));
 
@@ -496,7 +524,7 @@ public class MultiPartUploadITest extends WithJetty {
     }
 
     @Test
-    public void multiPartByteArrayUploadingWorksUsingOptions() throws Exception {
+    void multiPartByteArrayUploadingWorksUsingOptions() throws Exception {
         // Given
         final byte[] bytes = IOUtils.toByteArray(getClass().getResourceAsStream("/car-records.xsd"));
 
@@ -511,14 +539,14 @@ public class MultiPartUploadITest extends WithJetty {
     }
 
     @Test
-    public void multiPartByteArrayUploadingWorksUsingForUtf8ControlNamesWhenCharsetIsSpecifiedInContentTypeAndMultipartModeIsNotStrict() throws Exception {
+    void multiPartByteArrayUploadingWorksUsingForUtf8ControlNamesWhenCharsetIsSpecifiedInContentTypeAndMultipartModeIsNotStrict() throws Exception {
         // Given
         final byte[] bytes = IOUtils.toByteArray(getClass().getResourceAsStream("/car-records.xsd"));
 
         // When
         given().
                 contentType("multipart/xml; charset=UTF-8").
-                config(RestAssuredConfig.config().httpClient(HttpClientConfig.httpClientConfig().httpMultipartMode(BROWSER_COMPATIBLE))).
+                config(RestAssuredConfig.config().httpClient(HttpClientConfig.httpClientConfig().multipartMode(BROWSER_COMPATIBLE))).
                 multiPart(new MultiPartSpecBuilder(bytes).controlName("Cédrìc").build()).
         when().
                 post("/multipart/file-utf8").
@@ -528,18 +556,63 @@ public class MultiPartUploadITest extends WithJetty {
     }
 
     @Test
-    public void multiPartByteArrayUploadingWorksUsingForUtf8ControlNamesWhenDefaultCharsetIsSpecifiedInMultiPartConfigAndMultipartModeIsNotStrict() throws Exception {
+    void multiPartByteArrayUploadingWorksUsingForUtf8ControlNamesWhenDefaultCharsetIsSpecifiedInMultiPartConfigAndMultipartModeIsNotStrict() throws Exception {
         // Given
         final byte[] bytes = IOUtils.toByteArray(getClass().getResourceAsStream("/car-records.xsd"));
 
         // When
         given().
-                config(RestAssuredConfig.config().httpClient(HttpClientConfig.httpClientConfig().httpMultipartMode(BROWSER_COMPATIBLE)).multiPartConfig(multiPartConfig().defaultCharset("UTF-8"))).
+                config(RestAssuredConfig.config().httpClient(HttpClientConfig.httpClientConfig().multipartMode(BROWSER_COMPATIBLE)).multiPartConfig(multiPartConfig().defaultCharset("UTF-8"))).
                 multiPart(new MultiPartSpecBuilder(bytes).controlName("Cédrìc").build()).
         when().
                 post("/multipart/file-utf8").
         then().
                 statusCode(200).
                 body(is(new String(bytes)));
+    }
+
+    @Test
+    void multiPartFileUploadingSendsCharsetInPartContentTypeWhenCharsetIsSpecified() throws Exception {
+        // Given
+        final File file = new File(getClass().getResource("/car-records.xsd").toURI());
+
+        // When
+        given().
+                multiPart(new MultiPartSpecBuilder(file).controlName("file").mimeType("text/plain").charset(StandardCharsets.UTF_8).build()).
+        when().
+                post("/multipart/fileContentType").
+        then().
+                statusCode(200).
+                body(is("text/plain; charset=UTF-8"));
+    }
+
+    @Test
+    void multiPartFileUploadingKeepsMimeTypeParametersWhenCharsetIsSpecified() throws Exception {
+        // Given
+        final File file = new File(getClass().getResource("/car-records.xsd").toURI());
+
+        // When
+        given().
+                multiPart(new MultiPartSpecBuilder(file).controlName("file").mimeType("text/plain; format=flowed").charset(StandardCharsets.UTF_8).build()).
+        when().
+                post("/multipart/fileContentType").
+        then().
+                statusCode(200).
+                body(is("text/plain; format=flowed; charset=UTF-8"));
+    }
+
+    @Test
+    void multiPartFileUploadingSendsOnlyMimeTypeInPartContentTypeWhenNoCharsetIsSpecified() throws Exception {
+        // Given
+        final File file = new File(getClass().getResource("/car-records.xsd").toURI());
+
+        // When
+        given().
+                multiPart("file", file, "text/plain").
+        when().
+                post("/multipart/fileContentType").
+        then().
+                statusCode(200).
+                body(is("text/plain"));
     }
 }

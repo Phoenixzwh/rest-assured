@@ -20,24 +20,35 @@
     <parent>
         <groupId>io.rest-assured</groupId>
         <artifactId>rest-assured-parent</artifactId>
-        <version>4.4.1-SNAPSHOT</version>
+        <version>7.0.0-SNAPSHOT</version>
     </parent>
     <groupId>io.rest-assured</groupId>
     <artifactId>rest-assured-common</artifactId>
     <packaging>bundle</packaging>
-    <version>4.4.1-SNAPSHOT</version>
+    <version>7.0.0-SNAPSHOT</version>
     <name>rest-assured-common</name>
-    <url>http://maven.apache.org</url>
+    <url>https://rest-assured.io/</url>
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
 
     <build>
+        <!-- The version file in META-INF/rest-assured, which REST Assured reads to check that its artifacts have the same version -->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <resource>
+                <directory>src/main/rest-assured-version</directory>
+                <filtering>true</filtering>
+            </resource>
+        </resources>
         <plugins>
+            <!-- Checks that this module doesn't bring Groovy (see the root pom) -->
             <plugin>
-                <groupId>org.codehaus.gmaven</groupId>
-                <artifactId>gmaven-plugin</artifactId>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
             </plugin>
             <plugin>
                 <groupId>org.apache.felix</groupId>
@@ -49,11 +60,11 @@
                         	io.restassured.common.*, 
                         	io.restassured.internal.common.*
                         </Export-Package>
+                        <!-- Jakarta XML Binding 4 has the same API as 3, so both are accepted -->
                         <Import-Package>
-							groovy.*;version="${groovy.range}",
-                            org.codehaus.groovy.*;version="${groovy.range}",
+                            jakarta.xml.bind.*;resolution:=optional;version="[3.0,5)",
                             *
-						</Import-Package>
+                        </Import-Package>
                     </instructions>
                 </configuration>
             </plugin>
@@ -66,17 +77,54 @@
 
     <dependencies>
         <dependency>
-            <groupId>org.codehaus.groovy</groupId>
-            <artifactId>groovy</artifactId>
-        </dependency>
-        <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-lang3</artifactId>
         </dependency>
+        <!-- The object mapper factories name these libraries. Users add the one they use. -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>tools.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.johnzon</groupId>
+            <artifactId>johnzon-mapper</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.json</groupId>
+            <artifactId>jakarta.json-api</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.eclipse.yasson</groupId>
+            <artifactId>yasson</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>javax.xml.bind</groupId>
+            <artifactId>jaxb-api</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.xml.bind</groupId>
+            <artifactId>jakarta.xml.bind-api</artifactId>
+            <optional>true</optional>
+        </dependency>
         <!-- Test -->
         <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>

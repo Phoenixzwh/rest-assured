@@ -17,18 +17,12 @@
 package io.restassured.module.webtestclient.setup;
 
 import org.springframework.http.codec.multipart.FilePart;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RequestPart;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 
 import java.util.concurrent.atomic.AtomicLong;
 
-import static org.springframework.http.MediaType.APPLICATION_FORM_URLENCODED_VALUE;
-import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
-import static org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE;
+import static org.springframework.http.MediaType.*;
 
 @RestController
 public class PutController {
@@ -54,5 +48,10 @@ public class PutController {
     @PutMapping(value = "/multipartFileUpload", consumes = MULTIPART_FORM_DATA_VALUE, produces = APPLICATION_JSON_VALUE)
     public Mono<String> multipartFileUpload(@RequestPart("file") Mono<FilePart> file) {
         return Mono.just(file.toString());
+    }
+
+    @PutMapping(value = "/multipartFileUpload/{type}", consumes = MULTIPART_FORM_DATA_VALUE)
+    public Mono<String> multipartFileUploadWithType(@PathVariable("type") String type) {
+        return Mono.just(type);
     }
 }

@@ -17,8 +17,10 @@
 package io.restassured.itest.java;
 
 import io.restassured.RestAssured;
+import io.restassured.authentication.FormAuthConfig;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.builder.ResponseBuilder;
+import io.restassured.config.CsrfConfig;
 import io.restassured.config.RestAssuredConfig;
 import io.restassured.filter.Filter;
 import io.restassured.filter.FilterContext;
@@ -29,6 +31,7 @@ import io.restassured.http.Cookies;
 import io.restassured.http.Header;
 import io.restassured.http.Headers;
 import io.restassured.internal.filter.FormAuthFilter;
+import io.restassured.itest.java.support.ResponseLog;
 import io.restassured.itest.java.support.SpookyGreetJsonResponseFilter;
 import io.restassured.itest.java.support.WithJetty;
 import io.restassured.response.Response;
@@ -36,10 +39,8 @@ import io.restassured.specification.FilterableRequestSpecification;
 import io.restassured.specification.FilterableResponseSpecification;
 import io.restassured.specification.RequestSpecification;
 import org.apache.commons.io.output.WriterOutputStream;
-import org.apache.commons.lang3.mutable.MutableObject;
-import org.apache.http.client.HttpClient;
-import org.apache.http.impl.client.DefaultHttpClient;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.assertj.core.api.Assertions;
 
 import java.io.PrintStream;
 import java.io.StringWriter;
@@ -55,10 +56,12 @@ import static org.hamcrest.Matchers.*;
 public class FilterITest extends WithJetty {
 
     @Test
-    public void filterWorks() throws Exception {
+    public void filterWorks() {
         final FormAuthFilter filter = new FormAuthFilter();
         filter.setUserName("John");
         filter.setPassword("Doe");
+        filter.setCsrfConfig(new CsrfConfig());
+        filter.setFormAuthConfig(new FormAuthConfig());
 
         given().
                 filter(filter).
@@ -70,7 +73,7 @@ public class FilterITest extends WithJetty {
     }
 
     @Test
-    public void supportsSpecifyingDefaultFilters() throws Exception {
+    public void supportsSpecifyingDefaultFilters() {
         final StringWriter writer = new StringWriter();
         final PrintStream captor = new PrintStream(new WriterOutputStream(writer), true);
         RestAssured.filters(asList(ErrorLoggingFilter.logErrorsTo(captor), ResponseLoggingFilter.logResponseTo(captor)));
@@ -79,22 +82,23 @@ public class FilterITest extends WithJetty {
         }  finally {
             RestAssured.reset();
         }
-        assertThat(writer.toString(), is(String.format("HTTP/1.1 409 Conflict%n" +
+        // JDK differences table, header names and order
+        assertThat(writer.toString(), is(ResponseLog.normalize(String.format("HTTP/1.1 409 Conflict%n" +
                 "Content-Type: text/plain;charset=utf-8%n" +
                 "Content-Length: 5%n" +
-                "Server: Jetty(9.4.34.v20201102)%n" +
+                "Server: Jetty(9.4.58.v20250814)%n" +
                 "%n" +
                 "ERROR%n" +
                 "HTTP/1.1 409 Conflict%n" +
                 "Content-Type: text/plain;charset=utf-8%n" +
                 "Content-Length: 5%n" +
-                "Server: Jetty(9.4.34.v20201102)%n" +
+                "Server: Jetty(9.4.58.v20250814)%n" +
                 "%n" +
-                "ERROR%n")));
+                "ERROR%n"))));
     }
 
     @Test
-    public void filtersCanAlterResponseBeforeValidation() throws Exception {
+    public void filtersCanAlterResponseBeforeValidation() {
        given().
                filter(new SpookyGreetJsonResponseFilter()).
                queryParam("firstName", "John").
@@ -126,28 +130,6 @@ public class FilterITest extends WithJetty {
         } finally {
             RestAssured.reset();
         }
-    }
-
-    @Test
-    public void httpClientIsAccessibleFromTheRequestSpecification() {
-        // Given
-        final MutableObject<HttpClient> client = new MutableObject<HttpClient>();
-        // When
-
-        given().
-                filter(new Filter() {
-                    public Response filter(FilterableRequestSpecification requestSpec, FilterableResponseSpecification responseSpec, FilterContext ctx) {
-                        client.setValue(requestSpec.getHttpClient());
-                        return new ResponseBuilder().setStatusCode(200).setContentType("application/json").setBody("{ \"message\" : \"hello\"}").build();
-                    }
-                }).
-        expect().
-                body("message", equalTo("hello")).
-        when().
-                get("/something");
-
-        // Then
-        assertThat(client.getValue(), instanceOf(DefaultHttpClient.class));
     }
 
     @Test
@@ -406,7 +388,7 @@ public class FilterITest extends WithJetty {
     }
 
     @Test public void
-    can_remove_unnamed_path_parameter_by_value_from_filter() throws Exception {
+    can_remove_unnamed_path_parameter_by_value_from_filter() {
         given().
                 filter((requestSpec, responseSpec, ctx) -> {
                     assertThat(requestSpec.getUnnamedPathParamValues(), contains("John", "Doe", "Real Name"));
@@ -424,7 +406,7 @@ public class FilterITest extends WithJetty {
     }
 
     @Test public void
-    can_remove_unnamed_path_parameter_by_name_from_filter() throws Exception {
+    can_remove_unnamed_path_parameter_by_name_from_filter() {
         given().
                 filter((requestSpec, responseSpec, ctx) -> {
                     assertThat(requestSpec.getUnnamedPathParamValues(), contains("John", "Doe"));
@@ -443,10 +425,8 @@ public class FilterITest extends WithJetty {
     }
 
     @Test public void
-    can_remove_both_unnamed_and_named_path_parameter_from_filter_and_order_is_maintained() throws Exception {
-        exception.expect(IllegalArgumentException.class);
-        exception.expectMessage("Path parameters were not correctly defined. Redundant path parameters are: John3, Doe.");
-
+    can_remove_both_unnamed_and_named_path_parameter_from_filter_and_order_is_maintained() {
+        Throwable thrown = Assertions.catchThrowable(() ->
         given().
                 pathParam("firstName", "John2").
                 filter((requestSpec, responseSpec, ctx) -> {
@@ -458,7 +438,11 @@ public class FilterITest extends WithJetty {
                     return ctx.next(requestSpec, responseSpec);
                 }).
         when().
-                get("/{firstName}/{lastName}", "John", "John3", "Doe");
+                get("/{firstName}/{lastName}", "John", "John3", "Doe"));
+
+        Assertions.assertThat(thrown)
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Path parameters were not correctly defined. Redundant path parameters are: John3, Doe.");
     }
 
     @Test public void

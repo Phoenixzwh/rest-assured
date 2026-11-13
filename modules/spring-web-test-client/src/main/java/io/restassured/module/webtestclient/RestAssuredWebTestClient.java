@@ -15,9 +15,11 @@
  */
 package io.restassured.module.webtestclient;
 
+import io.restassured.internal.support.CommonVersionCheck;
 import io.restassured.config.LogConfig;
 import io.restassured.filter.log.LogDetail;
 import io.restassured.http.Method;
+import io.restassured.internal.client.ResponseDefaults;
 import io.restassured.module.webtestclient.config.RestAssuredWebTestClientConfig;
 import io.restassured.module.webtestclient.internal.*;
 import io.restassured.module.webtestclient.response.WebTestClientResponse;
@@ -37,11 +39,44 @@ import java.util.Map;
 import java.util.function.Function;
 
 import static io.restassured.config.LogConfig.logConfig;
+import static io.restassured.internal.common.assertion.AssertParameter.notNull;
 
 /**
  * The Spring Web Test Client module's equivalent of {@link io.restassured.RestAssured}. This is the starting point of the DSL.
+ * <h2>Thread safety</h2>
+ * <p>
+ * The static fields and methods of this class (such as {@link #webTestClient(WebTestClient)}, {@link #config} and
+ * {@link #basePath}) are settings shared by all threads. When tests run in parallel:
+ * <ul>
+ * <li>Set the static settings once, before the tests start running in parallel, and don't change them while requests
+ * are being made. Calling {@link #given()} from many threads at once is safe, and each call takes a copy of the
+ * settings.</li>
+ * <li>When tests that run in parallel need different settings, bind a {@link RestAssuredWebTestClientClient} with the
+ * settings of each test to its thread with {@link #useClient(RestAssuredWebTestClientClient)} in a
+ * <code>@BeforeEach</code> method, and call {@link #resetClient()} in an <code>@AfterEach</code> method. The tests then
+ * use <code>given()</code> as usual:
+ * <pre>
+ * &#64;BeforeEach void useOwnWebTestClient() { RestAssuredWebTestClient.useClient(RestAssuredWebTestClientClient.builder().webTestClient(webTestClient).build()); }
+ * &#64;AfterEach void unbindClient() { RestAssuredWebTestClient.resetClient(); }
+ * </pre>
+ * {@link #reset()} unbinds the client too, but it also resets the static settings for all threads, which tests that run
+ * at the same time may use.</li>
+ * <li>To use a client for one request, name it with {@link #given(RestAssuredWebTestClientClient)}. A value for one
+ * request can also be set on the request, for example <code>given().webTestClient(webTestClient)</code>.</li>
+ * <li>A client bound with <code>useClient(..)</code> is used by the requests of the thread that bound it only. A request
+ * on another thread, for example in a condition that Awaitility polls on a thread of its own, uses the static settings
+ * unless it names the client with <code>given(client)</code>, or Awaitility polls with <code>pollInSameThread()</code>.</li>
+ * <li>A client can't be changed once it's built, so it's safe to share one between threads and tests.</li>
+ * <li>A request specification can be sent from many threads at once, but don't change one from several threads at
+ * once; start a new one with {@link #given()} in each thread.</li>
+ * </ul>
  */
 public class RestAssuredWebTestClient {
+
+    static {
+        // First, so that an older rest-assured-common gives a message instead of a NoClassDefFoundError
+        CommonVersionCheck.verify();
+    }
 
     /**
      * Define a REST Assured WebTestClient configuration. E.g.
@@ -51,7 +86,7 @@ public class RestAssuredWebTestClient {
      * <p/>
      * <code>newConfig()</code> can be statically imported from {@link RestAssuredWebTestClientConfig}.
      */
-    public static RestAssuredWebTestClientConfig config;
+    public static volatile RestAssuredWebTestClientConfig config;
 
     /**
      * Specify a default request specification that will be sent with each request. E,g.
@@ -61,7 +96,7 @@ public class RestAssuredWebTestClient {
      * <p/>
      * means that for each request by Rest Assured "parameter1" will be equal to "value1".
      */
-    public static WebTestClientRequestSpecification requestSpecification;
+    public static volatile WebTestClientRequestSpecification requestSpecification;
 
     /**
      * Specify a default response specification that will be sent with each request. E,g.
@@ -71,15 +106,22 @@ public class RestAssuredWebTestClient {
      * <p/>
      * means that for each response Rest Assured will assert that the status code is equal to 200.
      */
-    public static ResponseSpecification responseSpecification = null;
+    public static volatile ResponseSpecification responseSpecification = null;
 
     /**
      * The base path that's used by REST assured when making requests. The base path is prepended to the request path.
      * Default value is <code>/</code>.
      */
-    public static String basePath = "/";
+    public static volatile String basePath = "/";
 
-    private static WebTestClientFactory webTestClientFactory = null;
+    private static volatile WebTestClientFactory webTestClientFactory = null;
+
+    // The static API: a client that reads the static fields at each call
+    private static final RestAssuredWebTestClientClient DEFAULT = new RestAssuredWebTestClientClient(RestAssuredWebTestClient::staticDefaults,
+            ResponseDefaults::ofStaticFields);
+    // The client of useClient(..). Not inheritable: a thread of a pool, such as a ForkJoinPool worker that JUnit runs
+    // tests on, would inherit the client of another test.
+    private static final ThreadLocal<RestAssuredWebTestClientClient> BOUND_CLIENT = new ThreadLocal<>();
 
     /**
      * Set a {@link WebTestClient} instance that REST Assured will use when making requests unless overwritten
@@ -108,8 +150,24 @@ public class RestAssuredWebTestClient {
      * @return a {@link WebTestClientRequestSpecification}.
      */
     public static WebTestClientRequestSpecification given() {
-        return new WebTestClientRequestSpecificationImpl(webTestClientFactory, config, basePath, requestSpecification,
-                responseSpecification);
+        return current().given();
+    }
+
+    /**
+     * Starts a request with the defaults of <code>client</code> instead of the static settings, or of a client bound to
+     * the thread with {@link #useClient(RestAssuredWebTestClientClient)}. For example:
+     * <pre>
+     * RestAssuredWebTestClientClient api = RestAssuredWebTestClientClient.builder().webTestClient(webTestClient).basePath("/api").build();
+     *
+     * given(api).queryParam("name", "John").when().get("/greeting").then().statusCode(200);
+     * </pre>
+     *
+     * @param client The client whose defaults the request uses
+     * @return a {@link WebTestClientRequestSpecification}.
+     * @see RestAssuredWebTestClientClient
+     */
+    public static WebTestClientRequestSpecification given(RestAssuredWebTestClientClient client) {
+        return notNull(client, RestAssuredWebTestClientClient.class).given();
     }
 
     /**
@@ -201,14 +259,81 @@ public class RestAssuredWebTestClient {
     }
 
     /**
-     * Reset all static configurations to their default values.
+     * Reset all static configurations to their default values. It also unbinds the client that <code>useClient(..)</code>
+     * bound to the current thread, with {@link #resetClient()}. The static fields are reset for all threads, but the
+     * clients bound to other threads stay.
      */
     public static void reset() {
+        resetClient();
         webTestClientFactory = null;
         config = null;
         basePath = "/";
         responseSpecification = null;
         requestSpecification = null;
+    }
+
+    /**
+     * Creates a client with the current values of the static fields, the values that {@link #given()} starts from when no
+     * client is bound to the thread. Later changes to them don't reach the client. For example:
+     * <pre>
+     * RestAssuredWebTestClientClient other = RestAssuredWebTestClient.client().toBuilder().basePath("/other").build();
+     * </pre>
+     *
+     * @return A new client
+     * @see RestAssuredWebTestClientClient
+     */
+    public static RestAssuredWebTestClientClient client() {
+        return new RestAssuredWebTestClientClient.Builder(staticDefaults()).build();
+    }
+
+    /**
+     * Binds <code>client</code> to the current thread. While a client is bound, {@link #given()}, {@link #with()} and the
+     * static methods that send a request, such as {@link #get(String, Object...)}, use the client instead of the static
+     * settings on this thread, until {@link #resetClient()} or {@link #reset()} unbinds it. A client named with
+     * {@link #given(RestAssuredWebTestClientClient)} wins over the bound one.
+     * <p>
+     * The binding isn't inherited by other threads: a request on another thread uses the static settings unless it names
+     * the client with {@link #given(RestAssuredWebTestClientClient)}. {@link #client()}, {@link #config()} and the other
+     * static fields and setters are the static settings, whether a client is bound or not.
+     * <p>
+     * For example, for tests that run in parallel and each use their own WebTestClient instance with the usual DSL:
+     * <pre>
+     * &#64;BeforeEach void useOwnWebTestClient() { RestAssuredWebTestClient.useClient(RestAssuredWebTestClientClient.builder().webTestClient(webTestClient).build()); }
+     * &#64;AfterEach void unbindClient() { RestAssuredWebTestClient.resetClient(); }
+     *
+     * &#64;Test void greets() {
+     *     given().queryParam("name", "John").when().get("/greeting").then().body("content", equalTo("Hello, John!"));
+     * }
+     * </pre>
+     * Unbind the client with {@link #resetClient()} after each test, since the thread may run other tests later.
+     * {@link #reset()} unbinds it too, but it also resets the static settings for all threads, which tests that run at
+     * the same time may use.
+     *
+     * @param client The client to use on the current thread. Use {@link #resetClient()} to unbind it.
+     * @see RestAssuredWebTestClientClient
+     */
+    public static void useClient(RestAssuredWebTestClientClient client) {
+        BOUND_CLIENT.set(notNull(client, RestAssuredWebTestClientClient.class));
+    }
+
+    /**
+     * Unbinds the client that {@link #useClient(RestAssuredWebTestClientClient)} bound to the current thread, if there
+     * is one, so that the requests of this thread use the static settings again. The clients bound to other threads
+     * stay. {@link #reset()} does this too.
+     */
+    public static void resetClient() {
+        BOUND_CLIENT.remove();
+    }
+
+    // The client bound to the current thread, or else the default client of the static settings
+    private static RestAssuredWebTestClientClient current() {
+        RestAssuredWebTestClientClient bound = BOUND_CLIENT.get();
+        return bound == null ? DEFAULT : bound;
+    }
+
+    // Only reads the static fields: given() is called from many threads at once when tests run in parallel
+    private static WebTestClientClientDefaults staticDefaults() {
+        return new WebTestClientClientDefaults(webTestClientFactory, config, basePath, requestSpecification, responseSpecification);
     }
 
     /**
@@ -712,6 +837,30 @@ public class RestAssuredWebTestClient {
     }
 
     /**
+     * Perform a QUERY request to a <code>path</code>. Normally the path doesn't have to be fully-qualified e.g. you don't need to
+     * specify the path as <tt>http://localhost:8080/path</tt>. In this case it's enough to use <tt>/path</tt>.
+     *
+     * @param path       The path to send the request to.
+     * @param pathParams The path parameters. E.g. if path is "/book/{hotelId}/{roomNumber}" you can do <code>query("/book/{hotelName}/{roomNumber}", "Hotels R Us", 22);</code>.
+     * @return The response of the request.
+     */
+    public static WebTestClientResponse query(String path, Object... pathParams) {
+        return given().query(path, pathParams);
+    }
+
+    /**
+     * Perform a QUERY request to a <code>path</code>. Normally the path doesn't have to be fully-qualified e.g. you don't need to
+     * specify the path as <tt>http://localhost:8080/path</tt>. In this case it's enough to use <tt>/path</tt>.
+     *
+     * @param path       The path to send the request to.
+     * @param pathParams The path parameters.
+     * @return The response of the request.
+     */
+    public static WebTestClientResponse query(String path, Map<String, ?> pathParams) {
+        return given().query(path, pathParams);
+    }
+
+    /**
      * Perform a OPTIONS request to a path generated from the provided {@link Function} <code>uriFunction</code>.
      *
      * @param uriFunction       The {@code Function<UriBuilder, URI>} used to generate the path to send the request to.
@@ -719,6 +868,16 @@ public class RestAssuredWebTestClient {
      */
     public static WebTestClientResponse options(Function<UriBuilder, URI> uriFunction) {
         return given().options(uriFunction);
+    }
+
+    /**
+     * Perform a QUERY request to a path generated from the provided {@link Function} <code>uriFunction</code>.
+     *
+     * @param uriFunction       The {@code Function<UriBuilder, URI>} used to generate the path to send the request to.
+     * @return The response of the QUERY request.
+     */
+    public static WebTestClientResponse query(Function<UriBuilder, URI> uriFunction) {
+        return given().query(uriFunction);
     }
 
     /**
@@ -732,6 +891,16 @@ public class RestAssuredWebTestClient {
     }
 
     /**
+     * Perform a QUERY request to a <code>uri</code>.
+     *
+     * @param uri The uri to send the request to.
+     * @return The response of the request.
+     */
+    public static WebTestClientResponse query(URI uri) {
+        return given().query(uri);
+    }
+
+    /**
      * Perform a OPTIONS request to a <code>url</code>.
      *
      * @param url The url to send the request to.
@@ -742,12 +911,31 @@ public class RestAssuredWebTestClient {
     }
 
     /**
+     * Perform a QUERY request to a <code>url</code>.
+     *
+     * @param url The url to send the request to.
+     * @return The response of the request.
+     */
+    public static WebTestClientResponse query(URL url) {
+        return given().query(url);
+    }
+
+    /**
      * Perform a OPTIONS request to the statically configured base path.
      *
      * @return The response of the request.
      */
     public static WebTestClientResponse options() {
         return given().options();
+    }
+
+    /**
+     * Perform a QUERY request to the statically configured base path.
+     *
+     * @return The response of the request.
+     */
+    public static WebTestClientResponse query() {
+        return given().query();
     }
 
     /**
@@ -819,6 +1007,7 @@ public class RestAssuredWebTestClient {
      * @return The assigned config or a new config is no config is assigned
      */
     public static RestAssuredWebTestClientConfig config() {
-        return config == null ? new RestAssuredWebTestClientConfig() : config;
+        RestAssuredWebTestClientConfig currentConfig = config;
+        return currentConfig == null ? new RestAssuredWebTestClientConfig() : currentConfig;
     }
 }

@@ -17,107 +17,124 @@
 package io.restassured.itest.java;
 
 import io.restassured.RestAssured;
-import io.restassured.builder.ResponseBuilder;
-import io.restassured.config.DecoderConfig;
 import io.restassured.config.HttpClientConfig;
+import io.restassured.config.RedirectConfig;
 import io.restassured.config.RestAssuredConfig;
-import io.restassured.filter.Filter;
-import io.restassured.filter.FilterContext;
+import io.restassured.itest.java.support.TestClient;
 import io.restassured.itest.java.support.WithJetty;
-import io.restassured.response.Response;
-import io.restassured.specification.FilterableRequestSpecification;
-import io.restassured.specification.FilterableResponseSpecification;
-import org.apache.commons.lang3.mutable.MutableObject;
-import org.apache.http.Header;
-import org.apache.http.client.HttpClient;
-import org.apache.http.impl.client.SystemDefaultHttpClient;
-import org.apache.http.message.BasicHeader;
-import org.junit.Test;
+import io.restassured.specification.RequestSpecification;
+import org.apache.hc.client5.http.impl.DefaultHttpRequestRetryStrategy;
+import org.apache.hc.client5.http.impl.DefaultRedirectStrategy;
+import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
+import org.apache.hc.core5.util.TimeValue;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 
-import java.util.ArrayList;
+import java.io.IOException;
+import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
 import static io.restassured.RestAssured.given;
-import static org.apache.http.client.params.ClientPNames.*;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.hamcrest.Matchers.*;
 
 public class HttpClientConfigITest extends WithJetty {
 
     @Test
-    public void doesntFollowRedirectsIfSpecifiedInTheHttpClientConfig() throws Exception {
-        final List<Header> httpClientHeaders = new ArrayList<Header>();
-        httpClientHeaders.add(new BasicHeader("header1", "value1"));
-        httpClientHeaders.add(new BasicHeader("header2", "value2"));
-        RestAssured.config = RestAssuredConfig.newConfig().httpClient(HttpClientConfig.httpClientConfig().setParam(DEFAULT_HEADERS, httpClientHeaders));
+    public void anHttpClient4ParameterThatRestAssuredDoesntUseAnyMoreFailsTheRequest() {
+        RestAssured.config = RestAssuredConfig.newConfig().httpClient(HttpClientConfig.httpClientConfig().setParam("http.default-headers", List.of("header1: value1")));
         try {
-            given().
-                    param("url", "/hello").
-            expect().
-                    statusCode(200).
-                    header("header1", "value1").
-                    header("header2", "value2").
-            when().
-                    get("/multiHeaderReflect");
+            IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                    () -> given().param("url", "/hello").get("/multiHeaderReflect"));
+
+            assertThat(thrown.getMessage(), startsWith("The Apache HttpClient 4 parameter \"http.default-headers\" of the HttpClientConfig "
+                    + "isn't used any more"));
         } finally {
             RestAssured.reset();
         }
     }
 
     @Test
-    public void doesntThrowClientProtocolExceptionIfMaxNumberOfRedirectAreExceededInHttpClientConfigBecauseRedirectConfigHasPrecedence() throws Exception {
-        RestAssured.config = RestAssuredConfig.newConfig().httpClient(HttpClientConfig.httpClientConfig().setParam(HANDLE_REDIRECTS, true).and().setParam(MAX_REDIRECTS, 0));
-        try {
-            given().
-                    param("url", "/hello").
-            expect().
-                    body("hello", equalTo("Hello Scalatra")).
-            when().
-                    get("/redirect");
-        } finally {
-            RestAssured.reset();
+    @Tag(TestClient.APACHE5_ONLY)
+    public void aCustomizerOfApacheHttpClient5GetsTheBuilder() {
+        HttpClientConfig customized = customizeApache5(builder -> builder.addRequestInterceptorFirst((request, entity, context) -> request.addHeader("X-Intercepted", "yes")));
+        RequestSpecification request = given().config(RestAssuredConfig.config().httpClient(customized));
+        if (TestClient.isJdk()) {
+            assertTheJdkClientRejectsTheCustomizer(() -> request.get("/multiHeaderReflect"));
+            return;
         }
+
+        request.get("/multiHeaderReflect").then().header("X-Intercepted", "yes");
     }
 
     @Test
-    public void httpClientIsConfigurableFromANonStaticHttpClientConfig() {
-        // Given
-        final MutableObject<HttpClient> client = new MutableObject<>();
+    @Tag(TestClient.APACHE5_ONLY)
+    public void aCustomizerOfApacheHttpClient5CantTurnOnRedirectsBecauseRestAssuredFollowsThem() {
+        HttpClientConfig customized = customizeApache5(builder -> builder.setRedirectStrategy(DefaultRedirectStrategy.INSTANCE));
+        RequestSpecification request = given().config(RestAssuredConfig.config().httpClient(customized).redirect(RedirectConfig.redirectConfig().followRedirects(false)))
+                .param("url", "/hello");
+        if (TestClient.isJdk()) {
+            assertTheJdkClientRejectsTheCustomizer(() -> request.get("/redirect"));
+            return;
+        }
 
-        // When
-        given().
-                config(RestAssuredConfig.newConfig().httpClient(HttpClientConfig.httpClientConfig().httpClientFactory(SystemDefaultHttpClient::new))).
-                filter(new Filter() {
-                    public Response filter(FilterableRequestSpecification requestSpec, FilterableResponseSpecification responseSpec, FilterContext ctx) {
-                        client.setValue(requestSpec.getHttpClient());
-                        return new ResponseBuilder().setStatusCode(200).setContentType("application/json").setBody("{ \"message\" : \"hello\"}").build();
+        request.get("/redirect").then().statusCode(302);
+    }
+
+    @Test
+    @Tag(TestClient.APACHE5_ONLY)
+    public void aCustomizerOfApacheHttpClient5CantTurnOnRetries() throws IOException {
+        HttpClientConfig customized = customizeApache5(builder -> builder.setRetryStrategy(new DefaultHttpRequestRetryStrategy(3, TimeValue.ofMilliseconds(1))));
+        // Closes each connection without an answer
+        AtomicInteger connections = new AtomicInteger();
+        try (ServerSocket server = new ServerSocket(0, 50, InetAddress.getLoopbackAddress())) {
+            Thread thread = new Thread(() -> {
+                while (!server.isClosed()) {
+                    try (Socket connection = server.accept()) {
+                        connections.incrementAndGet();
+                        connection.getInputStream().read(new byte[1024]);
+                    } catch (IOException e) {
+                        return;
                     }
-                }).
-        expect().
-                body("message", equalTo("hello")).
-        when().
-                get("/something");
+                }
+            });
+            thread.setDaemon(true);
+            thread.start();
 
-        // Then
-        assertThat(client.getValue(), instanceOf(SystemDefaultHttpClient.class));
+            Executable request = () -> given().config(RestAssuredConfig.config().httpClient(customized)).get("http://localhost:" + server.getLocalPort() + "/");
+            if (TestClient.isJdk()) {
+                assertTheJdkClientRejectsTheCustomizer(request);
+                return;
+            }
+
+            assertThrows(IOException.class, request);
+            assertThat(connections.get(), equalTo(1));
+        }
+    }
+
+    private static HttpClientConfig customizeApache5(Consumer<HttpClientBuilder> customizer) {
+        return HttpClientConfig.httpClientConfig().customizeClient(HttpClientBuilder.class, customizer);
+    }
+
+    // The JDK client fails a request with a customizer of Apache HttpClient 5, and says why
+    private static void assertTheJdkClientRejectsTheCustomizer(Executable request) {
+        UnsupportedOperationException thrown = assertThrows(UnsupportedOperationException.class, request);
+        assertThat(thrown.getMessage(), equalTo("A customizer for org.apache.hc.client5.http.impl.classic.HttpClientBuilder is configured, but REST Assured "
+                + "uses the JDK HTTP client."));
     }
 
     @Test
-    public void httpClientIsConfigurableFromAStaticHttpClientConfigWithOtherConfigurations() {
-        // Given
-        final MutableObject<HttpClient> client = new MutableObject<>();
-        RestAssured.config = RestAssuredConfig.newConfig().httpClient(HttpClientConfig.httpClientConfig().setParam(HANDLE_REDIRECTS, true).and().setParam(MAX_REDIRECTS, 0).and().httpClientFactory(SystemDefaultHttpClient::new));
-
-        // When
+    public void theRedirectParamsOfTheHttpClientConfigDontLimitRedirectsBecauseTheRedirectConfigHasPrecedence() throws Exception {
+        RestAssured.config = RestAssuredConfig.newConfig().httpClient(HttpClientConfig.httpClientConfig().setParam("http.protocol.handle-redirects", true).and().setParam("http.protocol.max-redirects", 0));
         try {
             given().
                     param("url", "/hello").
-                    filter(new Filter() {
-                        public Response filter(FilterableRequestSpecification requestSpec, FilterableResponseSpecification responseSpec, FilterContext ctx) {
-                            client.setValue(requestSpec.getHttpClient());
-                            return ctx.next(requestSpec, responseSpec);
-                        }
-                    }).
             expect().
                     body("hello", equalTo("Hello Scalatra")).
             when().
@@ -125,128 +142,6 @@ public class HttpClientConfigITest extends WithJetty {
         } finally {
             RestAssured.reset();
         }
-
-        // Then
-        assertThat(client.getValue(), instanceOf(SystemDefaultHttpClient.class));
-    }
-
-    @Test public void
-    http_client_config_allows_specifying_that_the_http_client_instance_is_reused_in_multiple_requests() {
-        final MutableObject<HttpClient> client1 = new MutableObject<HttpClient>();
-        final MutableObject<HttpClient> client2 = new MutableObject<HttpClient>();
-
-        RestAssured.config = RestAssuredConfig.newConfig().httpClient(HttpClientConfig.httpClientConfig().reuseHttpClientInstance());
-
-        // When
-        try {
-            given().
-                    param("url", "/hello").
-                    filter(new Filter() {
-                        public Response filter(FilterableRequestSpecification requestSpec, FilterableResponseSpecification responseSpec, FilterContext ctx) {
-                            client1.setValue(requestSpec.getHttpClient());
-                            return ctx.next(requestSpec, responseSpec);
-                        }
-                    }).
-            expect().
-                    body("hello", equalTo("Hello Scalatra")).
-            when().
-                    get("/redirect");
-
-            given().
-                    header("name", "value").
-                    filter((requestSpec, responseSpec, ctx) -> {
-                        client2.setValue(requestSpec.getHttpClient());
-                        return ctx.next(requestSpec, responseSpec);
-                    }).
-            when().
-                    post("/reflect");
-        } finally {
-            RestAssured.reset();
-        }
-
-        assertThat(client1.getValue(), sameInstance(client2.getValue()));
-    }
-
-    @Test public void
-    local_http_client_config_doesnt_reuse_static_http_client_instance_when_local_config_specifies_reuse() {
-        final MutableObject<HttpClient> client1 = new MutableObject<HttpClient>();
-        final MutableObject<HttpClient> client2 = new MutableObject<HttpClient>();
-
-        RestAssured.config = RestAssuredConfig.newConfig().httpClient(HttpClientConfig.httpClientConfig().reuseHttpClientInstance());
-
-        // When
-        try {
-            given().
-                    param("url", "/hello").
-                    filter(new Filter() {
-                        public Response filter(FilterableRequestSpecification requestSpec, FilterableResponseSpecification responseSpec, FilterContext ctx) {
-                            client1.setValue(requestSpec.getHttpClient());
-                            return ctx.next(requestSpec, responseSpec);
-                        }
-                    }).
-            expect().
-                    body("hello", equalTo("Hello Scalatra")).
-            when().
-                    get("/redirect");
-
-            given().
-                    config(RestAssuredConfig.newConfig().httpClient(HttpClientConfig.httpClientConfig().reuseHttpClientInstance())).
-                    header("name", "value").
-                    filter(new Filter() {
-                        public Response filter(FilterableRequestSpecification requestSpec, FilterableResponseSpecification responseSpec, FilterContext ctx) {
-                            client2.setValue(requestSpec.getHttpClient());
-                            return ctx.next(requestSpec, responseSpec);
-                        }
-                    }).
-            when().
-                    post("/reflect");
-        } finally {
-            RestAssured.reset();
-        }
-
-        assertThat(client1.getValue(), not(sameInstance(client2.getValue())));
-    }
-
-    @Test public void
-    local_http_client_config_reuse_reuse_static_http_client_instance_when_local_config_changes_other_configs_than_http_client_config() {
-        final MutableObject<HttpClient> client1 = new MutableObject<HttpClient>();
-        final MutableObject<HttpClient> client2 = new MutableObject<HttpClient>();
-
-        RestAssured.config = RestAssuredConfig.newConfig().httpClient(HttpClientConfig.httpClientConfig().reuseHttpClientInstance());
-
-        // When
-        try {
-            given().
-                    param("url", "/hello").
-                    filter(new Filter() {
-                        public Response filter(FilterableRequestSpecification requestSpec, FilterableResponseSpecification responseSpec, FilterContext ctx) {
-                            client1.setValue(requestSpec.getHttpClient());
-                            return ctx.next(requestSpec, responseSpec);
-                        }
-                    }).
-            expect().
-                    body("hello", equalTo("Hello Scalatra")).
-            when().
-                    get("/redirect");
-
-            given().
-                    // Here we only change the decoder config
-                    config(RestAssured.config.decoderConfig(DecoderConfig.decoderConfig().with().contentDecoders(DecoderConfig.ContentDecoder.DEFLATE))).
-                    filter(new Filter() {
-                        public Response filter(FilterableRequestSpecification requestSpec, FilterableResponseSpecification responseSpec, FilterContext ctx) {
-                            client2.setValue(requestSpec.getHttpClient());
-                            return ctx.next(requestSpec, responseSpec);
-                        }
-                    }).
-            expect().
-                    body("Accept-Encoding", contains("deflate")).
-            when().
-                    get("/headersWithValues");
-        } finally {
-            RestAssured.reset();
-        }
-
-        assertThat(client1.getValue(), sameInstance(client2.getValue()));
     }
 
 }

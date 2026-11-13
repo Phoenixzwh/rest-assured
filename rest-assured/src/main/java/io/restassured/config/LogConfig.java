@@ -30,7 +30,8 @@ import static io.restassured.internal.common.assertion.AssertParameter.notNull;
 
 /**
  * Configure the logging for REST Assured. <p>Note that <i>only</i> things known to REST Assured (i.e. the request- and response specifications) will be logged. If you need to log what's <i>actually</i> sent on the wire
- * refer to the <a href="http://hc.apache.org/httpcomponents-client-ga/logging.html">HTTP Client logging docs</a> or use an external tool such as
+ * refer to the logging docs of the HTTP client, such as the <code>jdk.httpclient.HttpClient.log</code> system property of the
+ * JDK HTTP client, or use an external tool such as
  * <a href="http://www.wireshark.org/">Wireshark</a>.</p>
  */
 public class LogConfig implements Config {
@@ -46,7 +47,7 @@ public class LogConfig implements Config {
      * Configure the default stream to use the System.out stream (default).
      */
     public LogConfig() {
-        this(System.out, true, null, true, new HashSet<>(), false);
+        this(System.out, true, null, true, new TreeSet<>(String.CASE_INSENSITIVE_ORDER), false);
     }
 
     /**
@@ -94,7 +95,8 @@ public class LogConfig implements Config {
         this.logDetailIfValidationFails = logDetailIfValidationFails;
         this.isUserDefined = isUserDefined;
         this.urlEncodeRequestUri = urlEncodeRequestUri;
-        this.headerBlacklist = headerBlacklist;
+        this.headerBlacklist = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        this.headerBlacklist.addAll(headerBlacklist);
     }
 
     /**
@@ -119,7 +121,7 @@ public class LogConfig implements Config {
      * @return A new LogConfig instance
      */
     public LogConfig defaultStream(PrintStream printStream) {
-        return new LogConfig(printStream, true, logDetailIfValidationFails, urlEncodeRequestUri, headerBlacklist, true);
+        return new LogConfig(printStream, prettyPrintingEnabled, logDetailIfValidationFails, urlEncodeRequestUri, headerBlacklist, true);
     }
 
     /**
@@ -144,7 +146,7 @@ public class LogConfig implements Config {
     }
 
     /**
-     * Specify a whether or not to enable pretty printing by default.
+     * Specify whether or not to enable pretty printing by default.
      *
      * @param shouldEnable <code>true</code> if pretty-printing should be enabled, <code>false</code> otherwise.
      * @return A new LogConfig instance
@@ -186,21 +188,22 @@ public class LogConfig implements Config {
     }
 
     /**
-     * Blacklist one or more headers. If these headers show up during logging they will be replaced with 'HIDDEN'. The purpose of a blacklist is to prevent sensitive information
+     * Blacklist one or more headers. If these headers show up in the request or response log, their values are replaced with
+     * <code>[ BLACKLISTED ]</code>. Header names are matched ignoring case. The purpose of a blacklist is to prevent sensitive information
      * to be included in the log.
      *
-     * @param header The header to include in the blacklist
+     * @param header       The header to include in the blacklist
      * @param otherHeaders Additional headers to include in the blacklist (optional)
      * @return A new LogConfig instance
      */
     public LogConfig blacklistHeader(String header, String... otherHeaders) {
         notNull(header, "header");
-        Set<String> newHeaderBlackList = new HashSet<>(headerBlacklist);
+        Set<String> newHeaderBlackList = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        newHeaderBlackList.addAll(headerBlacklist);
         newHeaderBlackList.add(header);
         if (otherHeaders != null && otherHeaders.length > 0) {
             Collections.addAll(newHeaderBlackList, otherHeaders);
         }
-
         return new LogConfig(defaultPrintStream, prettyPrintingEnabled, logDetailIfValidationFails, urlEncodeRequestUri, newHeaderBlackList, true);
     }
 
@@ -215,6 +218,20 @@ public class LogConfig implements Config {
         notNull(headers, "headers");
         Set<String> newHeaderBlackList = headers.stream().filter(Objects::nonNull).collect(Collectors.toSet());
         return new LogConfig(defaultPrintStream, prettyPrintingEnabled, logDetailIfValidationFails, urlEncodeRequestUri, newHeaderBlackList, true);
+    }
+
+    /**
+     * Add the following sensitive headers to be excluded from the request and response log:
+     * <table>
+     *     <tr><td>Authorization</td></tr>
+     *     <tr><td>Cookie</td></tr>
+     *     <tr><td>Proxy-Authorization</td></tr>
+     * </table>
+     *
+     * @return A new LogConfig instance
+     */
+    public LogConfig blacklistDefaultSensitiveHeaders() {
+        return blacklistHeader("Authorization", "Proxy-Authorization", "Cookie");
     }
 
     /**

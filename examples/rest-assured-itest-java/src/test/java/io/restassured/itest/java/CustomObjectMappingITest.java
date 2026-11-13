@@ -26,10 +26,11 @@ import io.restassured.itest.java.support.WithJetty;
 import io.restassured.mapper.ObjectMapper;
 import io.restassured.mapper.ObjectMapperDeserializationContext;
 import io.restassured.mapper.ObjectMapperSerializationContext;
-import io.restassured.path.json.mapper.factory.GsonObjectMapperFactory;
+import io.restassured.common.mapper.factory.GsonObjectMapperFactory;
 import org.apache.commons.lang3.StringUtils;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+
+import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Type;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -46,14 +47,14 @@ public class CustomObjectMappingITest extends WithJetty {
     public AtomicBoolean customSerializationUsed = new AtomicBoolean(false);
     public AtomicBoolean customDeserializationUsed = new AtomicBoolean(false);
 
-    @Before public void
-    setup() throws Exception {
+    @BeforeEach public void
+    setup() {
         customSerializationUsed.set(false);
         customDeserializationUsed.set(false);
     }
 
     @Test public void
-    using_explicit_custom_object_mapper() throws Exception {
+    using_explicit_custom_object_mapper() {
         final Message message = new Message();
         message.setMessage("A message");
         final ObjectMapper mapper = new ObjectMapper() {

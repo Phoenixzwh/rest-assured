@@ -16,12 +16,11 @@
 
 package io.restassured.itest.java.objects;
 
-import org.junit.Ignore;
+import org.junit.jupiter.api.Disabled;
 
-import javax.xml.bind.annotation.XmlRootElement;
-
-@Ignore
-@XmlRootElement
+@Disabled
+@javax.xml.bind.annotation.XmlRootElement
+@jakarta.xml.bind.annotation.XmlRootElement
 public class Greeting {
     private String firstName;
     private String lastName;

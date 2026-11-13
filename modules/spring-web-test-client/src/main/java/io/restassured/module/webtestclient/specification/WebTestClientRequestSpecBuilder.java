@@ -16,17 +16,15 @@
 package io.restassured.module.webtestclient.specification;
 
 import io.restassured.config.LogConfig;
-import io.restassured.config.SessionConfig;
 import io.restassured.filter.log.LogDetail;
-import io.restassured.filter.log.RequestLoggingFilter;
 import io.restassured.http.ContentType;
 import io.restassured.http.Cookie;
 import io.restassured.http.Header;
+import io.restassured.internal.log.LogConfigRequestLoggingFilter;
 import io.restassured.mapper.ObjectMapper;
 import io.restassured.mapper.ObjectMapperType;
 import io.restassured.module.webtestclient.RestAssuredWebTestClient;
 import io.restassured.module.webtestclient.config.RestAssuredWebTestClientConfig;
-import io.restassured.module.webtestclient.internal.WebTestClientFactory;
 import io.restassured.module.webtestclient.internal.WebTestClientRequestSpecificationImpl;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import org.springframework.test.web.reactive.server.WebTestClientConfigurer;
@@ -34,39 +32,57 @@ import org.springframework.web.context.WebApplicationContext;
 
 import java.io.File;
 import java.io.InputStream;
-import java.io.PrintStream;
-import java.lang.reflect.Field;
 import java.util.Collection;
 import java.util.Map;
-import java.util.Set;
 
 import static io.restassured.internal.common.assertion.AssertParameter.notNull;
 
+/**
+ * You can use the builder to construct a request specification. The specification can be used as e.g.
+ * <pre>
+ * WebTestClientRequestSpecification requestSpec = new WebTestClientRequestSpecBuilder().addParam("parameter1", "value1").build();
+ *
+ * given().
+ *         spec(requestSpec).
+ * when().
+ *        get("/something").
+ * then().
+ *         body("x.y.z", equalTo("something")).
+ * </pre>
+ * <p>
+ * The builder doesn't read the static settings of {@link RestAssuredWebTestClient}, such as the WebTestClient instance,
+ * {@link RestAssuredWebTestClient#basePath}, {@link RestAssuredWebTestClient#config} or
+ * {@link RestAssuredWebTestClient#requestSpecification}. They apply when the specification is used, for example with
+ * <code>given().spec(requestSpec)</code>, so they're applied once, as they are at that time. With a client, for example
+ * <code>given(client).spec(requestSpec)</code>, the settings of the
+ * {@link io.restassured.module.webtestclient.RestAssuredWebTestClientClient} apply instead. To send the specification
+ * on its own, for example with <code>requestSpec.get("/something")</code>, set the WebTestClient instance on the builder,
+ * for example with {@link #setWebTestClient(WebTestClient)}.
+ * </p>
+ * <p>
+ * The builder uses its own config, the default one unless {@link #setConfig(RestAssuredWebTestClientConfig)} sets
+ * another, for what it computes while building: the body that {@link #setBody(Object)} serializes (ObjectMapperConfig
+ * and EncoderConfig), the session id name of {@link #setSessionId(String)} (SessionConfig), the update strategy of the
+ * parameters and attributes (ParamConfig), the default control name and file name of a multipart part (MultiPartConfig)
+ * and which headers overwrite each other (HeaderConfig). Merging the specification later doesn't redo them. To compute
+ * them with the static config, call <code>setConfig(RestAssuredWebTestClient.config())</code> before those methods. The
+ * settings of {@link #log(LogDetail)} are taken from the config of the request when it's logged instead.
+ * </p>
+ */
 public class WebTestClientRequestSpecBuilder {
 
 	private WebTestClientRequestSpecificationImpl spec;
 
+	/**
+	 * Starts with no WebTestClient instance or base path of its own, and a config with nothing configured.
+	 */
 	public WebTestClientRequestSpecBuilder() {
-		this.spec = new WebTestClientRequestSpecificationImpl(getConfiguredWebTestClientFactory(), RestAssuredWebTestClient.config,
-				RestAssuredWebTestClient.basePath, RestAssuredWebTestClient.requestSpecification,
-				RestAssuredWebTestClient.responseSpecification);
-	}
-
-	private static WebTestClientFactory getConfiguredWebTestClientFactory() {
-		try {
-			Field WebTestClientFactory = RestAssuredWebTestClient.class.getDeclaredField("webTestClientFactory");
-			WebTestClientFactory.setAccessible(true);
-			Object instance = WebTestClientFactory.get(RestAssuredWebTestClient.class);
-			WebTestClientFactory.setAccessible(false);
-			return (WebTestClientFactory) instance;
-		} catch (Exception e) {
-			throw new RuntimeException("Internal error: Cannot find WebTestClientFactory field in " + RestAssuredWebTestClient.class.getName());
-		}
+		this.spec = new WebTestClientRequestSpecificationImpl(null, null, null, null, null);
 	}
 
 	/**
-	 * Specify a String request body (such as e.g. JSON or XML) to be sent with the request. This works for the
-	 * POST, PUT and PATCH methods only. Trying to do this for the other http methods will cause an exception to be thrown.
+	 * Specify a String request body (such as e.g. JSON or XML) to be sent with the request. It is typically used with the
+	 * POST, PUT, PATCH and QUERY methods.
 	 * <p/>
 	 *
 	 * @param body The body to send.
@@ -78,8 +94,8 @@ public class WebTestClientRequestSpecBuilder {
 	}
 
 	/**
-	 * Specify a byte array request body to be sent with the request. This only works for the
-	 * POST http method. Trying to do this for the other http methods will cause an exception to be thrown.
+	 * Specify a byte array request body to be sent with the request. It is typically used with the
+	 * POST, PUT, PATCH and QUERY methods.
 	 *
 	 * @param body The body to send.
 	 * @return The request specification builder
@@ -92,8 +108,7 @@ public class WebTestClientRequestSpecBuilder {
 	/**
 	 * Specify an Object request content that will automatically be serialized to JSON or XML and sent with the request.
 	 * If the object is a primitive or <a href="http://download.oracle.com/javase/6/docs/api/java/lang/Number.html">Number</a> the object will
-	 * be converted to a String and put in the request body. This works for the POST, PUT and PATCH methods only.
-	 * Trying to do this for the other http methods will cause an exception to be thrown.
+	 * be converted to a String and put in the request body. It is typically used with the POST, PUT, PATCH and QUERY methods.
 	 * <p/>
 	 *
 	 * @param object The object to serialize and send with the request
@@ -106,7 +121,7 @@ public class WebTestClientRequestSpecBuilder {
 
 	/**
 	 * Specify an Object request content that will automatically be serialized to JSON or XML and sent with the request using a specific object mapper.
-	 * This works for the POST, PATCH and PUT methods only. Trying to do this for the other http methods will cause an exception to be thrown.
+	 * It is typically used with the POST, PUT, PATCH and QUERY methods.
 	 * <p>
 	 * Note that {@link #setBody(Object, ObjectMapperType)}
 	 * are the same except for the syntactic difference.
@@ -123,7 +138,7 @@ public class WebTestClientRequestSpecBuilder {
 
 	/**
 	 * Specify an Object request content that will automatically be serialized to JSON or XML and sent with the request using a specific object mapper type.
-	 * This works for the POST, PATCH and PUT methods only. Trying to do this for the other http methods will cause an exception to be thrown.
+	 * It is typically used with the POST, PUT, PATCH and QUERY methods.
 	 * <p>
 	 * Example of use:
 	 * <pre>
@@ -242,6 +257,101 @@ public class WebTestClientRequestSpecBuilder {
 	 */
 	public WebTestClientRequestSpecBuilder addQueryParam(String parameterName, Object... parameterValues) {
 		spec.queryParam(parameterName, parameterValues);
+		return this;
+	}
+
+	/**
+	 * Specify a path parameter. Path parameters are used to improve readability of the request path. E.g. instead
+	 * of writing:
+	 * <pre>
+	 * expect().statusCode(200).when().get("/item/"+myItem.getItemNumber()+"/buy/"+2);
+	 * </pre>
+	 * you can write:
+	 * <pre>
+	 * given().
+	 *         pathParam("itemNumber", myItem.getItemNumber()).
+	 *         pathParam("amount", 2).
+	 * expect().
+	 *          statusCode(200).
+	 * when().
+	 *        get("/item/{itemNumber}/buy/{amount}");
+	 * </pre>
+	 * <p/>
+	 * which improves readability and allows the path to be reusable in many tests. Another alternative is to use:
+	 * <pre>
+	 * expect().statusCode(200).when().get("/item/{itemNumber}/buy/{amount}", myItem.getItemNumber(), 2);
+	 * </pre>
+	 *
+	 * @param parameterName  The parameter key
+	 * @param parameterValue The parameter value
+	 * @return The request specification
+	 */
+	public WebTestClientRequestSpecBuilder addPathParam(String parameterName, Object parameterValue) {
+		spec.pathParam(parameterName, parameterValue);
+		return this;
+	}
+
+	/**
+	 * Specify multiple path parameter name-value pairs. Path parameters are used to improve readability of the request path. E.g. instead
+	 * of writing:
+	 * <pre>
+	 * expect().statusCode(200).when().get("/item/"+myItem.getItemNumber()+"/buy/"+2);
+	 * </pre>
+	 * you can write:
+	 * <pre>
+	 * given().
+	 *         pathParam("itemNumber", myItem.getItemNumber(), "amount", 2).
+	 * expect().
+	 *          statusCode(200).
+	 * when().
+	 *        get("/item/{itemNumber}/buy/{amount}");
+	 * </pre>
+	 * <p/>
+	 * which improves readability and allows the path to be reusable in many tests. Another alternative is to use:
+	 * <pre>
+	 * expect().statusCode(200).when().get("/item/{itemNumber}/buy/{amount}", myItem.getItemNumber(), 2);
+	 * </pre>
+	 *
+	 * @param firstParameterName      The name of the first parameter
+	 * @param firstParameterValue     The value of the first parameter
+	 * @param parameterNameValuePairs Additional parameters in name-value pairs.
+	 * @return The request specification
+	 */
+	public WebTestClientRequestSpecBuilder addPathParams(String firstParameterName, Object firstParameterValue, Object... parameterNameValuePairs) {
+		spec.pathParams(firstParameterName, firstParameterValue, parameterNameValuePairs);
+		return this;
+	}
+
+	/**
+	 * Specify multiple path parameter name-value pairs. Path parameters are used to improve readability of the request path. E.g. instead
+	 * of writing:
+	 * <pre>
+	 * expect().statusCode(200).when().get("/item/"+myItem.getItemNumber()+"/buy/"+2);
+	 * </pre>
+	 * you can write:
+	 * <pre>
+	 * Map&lt;String,Object&gt; pathParams = new HashMap&lt;String,Object&gt;();
+	 * pathParams.add("itemNumber",myItem.getItemNumber());
+	 * pathParams.add("amount",2);
+	 *
+	 * given().
+	 *         pathParameters(pathParams).
+	 * expect().
+	 *          statusCode(200).
+	 * when().
+	 *        get("/item/{itemNumber}/buy/{amount}");
+	 * </pre>
+	 * <p/>
+	 * which improves readability and allows the path to be reusable in many tests. Another alternative is to use:
+	 * <pre>
+	 * expect().statusCode(200).when().get("/item/{itemNumber}/buy/{amount}", myItem.getItemNumber(), 2);
+	 * </pre>
+	 *
+	 * @param parameterNameValuePairs A map containing the path parameters.
+	 * @return The request specification
+	 */
+	public WebTestClientRequestSpecBuilder addPathParams(Map<String, Object> parameterNameValuePairs) {
+		spec.pathParams(parameterNameValuePairs);
 		return this;
 	}
 
@@ -527,8 +637,8 @@ public class WebTestClientRequestSpecBuilder {
 	 * The following settings are merged:
 	 * <ul>
 	 * <li>Parameters</li>
-	 * <li>Cookies</li>
-	 * <li>Headers</li>
+	 * <li>Cookies (a cookie that is already present with the same value isn't added again)</li>
+	 * <li>Headers (a header that is already present with the same value isn't added again)</li>
 	 * </ul>
 	 *
 	 * @param specification The specification to add
@@ -637,19 +747,17 @@ public class WebTestClientRequestSpecBuilder {
 	}
 
 	/**
-	 * Enabled logging with the specified log detail. Set a {@link LogConfig} to configure the print stream and pretty printing options.
+	 * Enabled logging with the specified log detail. The print stream, pretty printing, URL encoding of the request URI and
+	 * blacklisted headers are taken from the {@link LogConfig} of the request when it's logged, so the log config where
+	 * the specification is used applies, for example that of {@link RestAssuredWebTestClient#config},
+	 * a {@link io.restassured.module.webtestclient.RestAssuredWebTestClientClient} or <code>given().config(..)</code>.
 	 *
 	 * @param logDetail The log detail.
 	 * @return WebTestClientRequestSpecBuilder
 	 */
 	public WebTestClientRequestSpecBuilder log(LogDetail logDetail) {
 		notNull(logDetail, LogDetail.class);
-		LogConfig logConfig = spec.getRestAssuredWebTestClientConfig().getLogConfig();
-		PrintStream printStream = logConfig.defaultStream();
-		boolean prettyPrintingEnabled = logConfig.isPrettyPrintingEnabled();
-		boolean shouldUrlEncodeRequestUri = logConfig.shouldUrlEncodeRequestUri();
-        Set<String> blacklistedHeaders = logConfig.blacklistedHeaders();
-        spec.setRequestLoggingFilter(new RequestLoggingFilter(logDetail, prettyPrintingEnabled, printStream, shouldUrlEncodeRequestUri, blacklistedHeaders));
+		spec.setRequestLoggingFilter(new LogConfigRequestLoggingFilter(logDetail, null, null));
 		return this;
 	}
 

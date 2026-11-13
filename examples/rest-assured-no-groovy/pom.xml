@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ~ Copyright 2026 the original author or authors.
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~        http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <groupId>io.rest-assured.examples</groupId>
+        <artifactId>example-parent</artifactId>
+        <version>7.0.0-SNAPSHOT</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>rest-assured-no-groovy</artifactId>
+    <name>REST Assured without Groovy</name>
+    <description>Checks that a project that depends only on rest-assured doesn't get Groovy or Apache HttpClient 4</description>
+
+    <build>
+        <plugins>
+            <!-- Fails the build if rest-assured brings Groovy (see the root pom), or Apache HttpClient 4 and the libraries
+                 it needed, which REST Assured 7.0 replaced with the JDK HTTP client, or Apache HttpClient 5, which only
+                 http-client-apache5 brings -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>ban-http-client-4</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <bannedDependencies>
+                                    <excludes>
+                                        <exclude>org.apache.httpcomponents:*:*:*:compile</exclude>
+                                        <exclude>org.apache.httpcomponents:*:*:*:runtime</exclude>
+                                        <exclude>commons-codec:*:*:*:compile</exclude>
+                                        <exclude>commons-codec:*:*:*:runtime</exclude>
+                                        <exclude>commons-logging:*:*:*:compile</exclude>
+                                        <exclude>commons-logging:*:*:*:runtime</exclude>
+                                        <exclude>org.apache.httpcomponents.client5:*:*:*:compile</exclude>
+                                        <exclude>org.apache.httpcomponents.client5:*:*:*:runtime</exclude>
+                                        <exclude>org.apache.httpcomponents.core5:*:*:*:compile</exclude>
+                                        <exclude>org.apache.httpcomponents.core5:*:*:*:runtime</exclude>
+                                    </excludes>
+                                    <message>Apache HttpClient 4 or 5, commons-codec and commons-logging must not be compile or runtime dependencies: REST Assured uses the JDK HTTP client unless http-client-apache5 is added.</message>
+                                </bannedDependencies>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.rest-assured</groupId>
+            <artifactId>rest-assured</artifactId>
+            <version>7.0.0-SNAPSHOT</version>
+        </dependency>
+    </dependencies>
+</project>

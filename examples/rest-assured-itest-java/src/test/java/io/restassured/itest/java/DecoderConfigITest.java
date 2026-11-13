@@ -24,8 +24,8 @@ import io.restassured.http.ContentType;
 import io.restassured.itest.java.support.WithJetty;
 import io.restassured.response.Response;
 import org.hamcrest.Matchers;
-import org.junit.Ignore;
-import org.junit.Test;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
 
 import static io.restassured.RestAssured.*;
 import static java.nio.charset.StandardCharsets.UTF_16;
@@ -69,12 +69,10 @@ public class DecoderConfigITest extends WithJetty {
 
     @Test public void
     decoder_config_can_be_configured_to_use_no_decoders() {
-        String hasAcceptEncodingParameter = "$.any { it.containsKey('Accept-Encoding') }";
-
         given().
                 config(RestAssuredConfig.newConfig().decoderConfig(DecoderConfig.decoderConfig().with().noContentDecoders())).
         expect().
-                body(hasAcceptEncodingParameter, is(false)).
+                body("$", not(hasKey("Accept-Encoding"))).
         when().
                 get("/headersWithValues");
     }
@@ -95,7 +93,7 @@ public class DecoderConfigITest extends WithJetty {
                 get("/headersWithValues");
     }
 
-    @Test @Ignore("External service")  public void
+    @Test @Disabled("External service")  public void
     use_no_wrap_for_inflated_streams_supports_gzdeflate_method() {
         RestAssured.baseURI = "https://charitablegift.fidelity.com";
 

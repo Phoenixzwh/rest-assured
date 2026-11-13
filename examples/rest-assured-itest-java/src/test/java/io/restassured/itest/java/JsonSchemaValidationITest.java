@@ -18,36 +18,38 @@ package io.restassured.itest.java;
 
 import com.github.fge.jsonschema.cfg.ValidationConfiguration;
 import com.github.fge.jsonschema.main.JsonSchemaFactory;
-import com.squareup.okhttp.mockwebserver.MockResponse;
-import com.squareup.okhttp.mockwebserver.MockWebServer;
 import io.restassured.itest.java.support.WithJetty;
 import io.restassured.module.jsv.JsonSchemaValidator;
+import mockwebserver3.MockResponse;
+import mockwebserver3.MockWebServer;
 import org.apache.commons.io.IOUtils;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 
 import static com.github.fge.jsonschema.SchemaVersion.DRAFTV3;
 import static com.github.fge.jsonschema.SchemaVersion.DRAFTV4;
 import static io.restassured.RestAssured.*;
 import static io.restassured.module.jsv.JsonSchemaValidatorSettings.settings;
-import static org.hamcrest.Matchers.*;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.hamcrest.Matchers.equalTo;
 
 public class JsonSchemaValidationITest extends WithJetty {
 
-    @Test public void
-    matches_string_schema_correctly() throws IOException {
+    @Test
+    void matches_string_schema_correctly() throws IOException {
         // Given
-        String schema = IOUtils.toString(Thread.currentThread().getContextClassLoader().getResourceAsStream("products-schema.json"));
+        String schema = IOUtils.toString(Thread.currentThread().getContextClassLoader().getResourceAsStream("products-schema.json"), StandardCharsets.UTF_8);
 
         // When
         get("/products").then().assertThat().body(JsonSchemaValidator.matchesJsonSchema(schema));
     }
 
-    @Test public void
-    matches_input_stream_schema_correctly() throws IOException {
+    @Test
+    void matches_input_stream_schema_correctly() {
         // Given
         InputStream schema = Thread.currentThread().getContextClassLoader().getResourceAsStream("products-schema.json");
 
@@ -55,73 +57,41 @@ public class JsonSchemaValidationITest extends WithJetty {
         get("/products").then().assertThat().body(JsonSchemaValidator.matchesJsonSchema(schema));
     }
 
-    @Test public void
-    matches_classpath_schema_correctly() throws IOException {
+    @Test
+    public void
+    matches_classpath_schema_correctly() {
         // When
         get("/products").then().assertThat().body(JsonSchemaValidator.matchesJsonSchemaInClasspath("products-schema.json"));
     }
 
-    @Test public void
-    works_with_expectation_api() throws IOException {
+    @Test
+    public void
+    works_with_expectation_api() {
         // When
         expect().body(JsonSchemaValidator.matchesJsonSchemaInClasspath("products-schema.json")).when().get("/products");
     }
 
-    @Test public void
-    can_mix_json_schema_validation_and_body_validations() throws IOException {
+    @Test
+    public void
+    can_mix_json_schema_validation_and_body_validations() {
         // When
         get("/products").then().assertThat().body(JsonSchemaValidator.matchesJsonSchemaInClasspath("products-schema.json")).and().body("[0].name", equalTo("An ice sculpture"));
     }
 
-    @Test public void
-    throws_assertion_error_when_schema_doesnt_match_json_content() throws IOException {
-        exception.expect(AssertionError.class);
-        exception.expectMessage("The content to match the given JSON schema.\n" +
-                "error: instance type (object) does not match any allowed primitive type (allowed: [\"array\"])\n" +
-                "    level: \"error\"\n" +
-                "    schema: {\"loadingURI\":\"#\",\"pointer\":\"\"}\n" +
-                "    instance: {\"pointer\":\"\"}\n" +
-                "    domain: \"validation\"\n" +
-                "    keyword: \"type\"\n" +
-                "    found: \"object\"\n" +
-                "    expected: [\"array\"]\n" +
-                "\n" +
-                "  Actual: { \"store\": {\n" +
-                "    \"book\": [ \n" +
-                "      { \"category\": \"reference\",\n" +
-                "        \"author\": \"Nigel Rees\",\n" +
-                "        \"title\": \"Sayings of the Century\",\n" +
-                "        \"price\": 8.95\n" +
-                "      },\n" +
-                "      { \"category\": \"fiction\",\n" +
-                "        \"author\": \"Evelyn Waugh\",\n" +
-                "        \"title\": \"Sword of Honour\",\n" +
-                "        \"price\": 12.99\n" +
-                "      },\n" +
-                "      { \"category\": \"fiction\",\n" +
-                "        \"author\": \"Herman Melville\",\n" +
-                "        \"title\": \"Moby Dick\",\n" +
-                "        \"isbn\": \"0-553-21311-3\",\n" +
-                "        \"price\": 8.99\n" +
-                "      },\n" +
-                "      { \"category\": \"fiction\",\n" +
-                "        \"author\": \"J. R. R. Tolkien\",\n" +
-                "        \"title\": \"The Lord of the Rings\",\n" +
-                "        \"isbn\": \"0-395-19395-8\",\n" +
-                "        \"price\": 22.99\n" +
-                "      }\n" +
-                "    ],\n" +
-                "    \"bicycle\": {\n" +
-                "      \"color\": \"red\",\n" +
-                "      \"price\": 19.95    }\n" +
-                "  }\n" +
-                "}");
-
-        // When
-        get("/jsonStore").then().assertThat().body(JsonSchemaValidator.matchesJsonSchemaInClasspath("products-schema.json").using(settings().parseUriAndUrlsAsJsonNode(true)));
+    @Test
+    void throws_assertion_error_when_schema_doesnt_match_json_content() {
+        assertThatThrownBy(() ->
+                get("/jsonStore").then().assertThat().body(JsonSchemaValidator.matchesJsonSchemaInClasspath("products-schema.json").using(settings().parseUriAndUrlsAsJsonNode(true)))
+        )
+                .isInstanceOf(AssertionError.class)
+                .hasMessageContaining("The content to match the given JSON schema.")
+                .hasMessageContaining("instance type (object) does not match any allowed primitive type (allowed: [\"array\"])")
+                .hasMessageContaining("expected: [\"array\"]")
+                .hasMessageContaining("Actual: { \"store\": {");
     }
 
-    @Test public void
+    @Test
+    public void
     json_schema_validator_supports_disabling_checked_validation_statically() {
         // Given
         JsonSchemaValidator.settings = settings().with().checkedValidation(false);
@@ -134,7 +104,8 @@ public class JsonSchemaValidationITest extends WithJetty {
         }
     }
 
-    @Test public void
+    @Test
+    public void
     json_schema_validator_supports_specifying_json_schema_factory_instance_statically() {
         // Given
         JsonSchemaValidator.settings = settings().with().jsonSchemaFactory(
@@ -148,11 +119,12 @@ public class JsonSchemaValidationITest extends WithJetty {
         }
     }
 
-    @Test public void
+    @Test
+    public void
     json_schema_validator_supports_specifying_json_schema_factory_instance_and_disabling_checked_validation_statically() {
         // Given
         JsonSchemaValidator.settings = settings().with().jsonSchemaFactory(
-                JsonSchemaFactory.newBuilder().setValidationConfiguration(ValidationConfiguration.newBuilder().setDefaultVersion(DRAFTV3).freeze()).freeze()).
+                        JsonSchemaFactory.newBuilder().setValidationConfiguration(ValidationConfiguration.newBuilder().setDefaultVersion(DRAFTV3).freeze()).freeze()).
                 and().with().checkedValidation(false);
 
         // When
@@ -163,7 +135,8 @@ public class JsonSchemaValidationITest extends WithJetty {
         }
     }
 
-    @Test public void
+    @Test
+    public void
     json_schema_validator_supports_using_a_supplied_json_schema_factory_instance() {
         // Given
         JsonSchemaFactory jsonSchemaFactory = JsonSchemaFactory.newBuilder().setValidationConfiguration(ValidationConfiguration.newBuilder().setDefaultVersion(DRAFTV4).freeze()).freeze();
@@ -172,104 +145,65 @@ public class JsonSchemaValidationITest extends WithJetty {
         get("/products").then().assertThat().body(JsonSchemaValidator.matchesJsonSchemaInClasspath("products-schema.json").using(jsonSchemaFactory));
     }
 
-    @Test public void
+    @Test
+    public void
     json_schema_validator_supports_using_the_supplied_json_schema_validator_settings() {
         // When
         get("/products").then().assertThat().body(JsonSchemaValidator.matchesJsonSchemaInClasspath("products-schema.json").using(settings().with().checkedValidation(false)));
     }
 
-    @Test public void
+    @Test
+    public void
     json_schema_validator_supports_draft_03() {
         // when
         get("/jsonStore").then().assertThat().body(JsonSchemaValidator.matchesJsonSchemaInClasspath("store-schema.json"));
     }
 
-    @Test public void
-    json_schema_validator_supports_draft_03_failures() {
-        exception.expect(AssertionError.class);
-        exception.expectMessage(allOf(containsString("Response body doesn't match expectation.\n" +
-                        "Expected: The content to match the given JSON schema.\n" +
-                        "error: object has missing required properties ([\"isbn\"])\n" +
-                        "    level: \"error\"\n" +
-                        "    schema: {\"loadingURI\":\"file:"),
-                containsString("store-schema-isbn-required.json#\",\"pointer\":\"/properties/store/properties/book/items/1\"}\n" +
-                        "    instance: {\"pointer\":\"/store/book/1\"}\n" +
-                        "    domain: \"validation\"\n" +
-                        "    keyword: \"properties\"\n" +
-                        "    required: [\"isbn\"]\n" +
-                        "    missing: [\"isbn\"]\n" +
-                        "\n" +
-                        "  Actual: { \"store\": {\n" +
-                        "    \"book\": [ \n" +
-                        "      { \"category\": \"reference\",\n" +
-                        "        \"author\": \"Nigel Rees\",\n" +
-                        "        \"title\": \"Sayings of the Century\",\n" +
-                        "        \"price\": 8.95\n" +
-                        "      },\n" +
-                        "      { \"category\": \"fiction\",\n" +
-                        "        \"author\": \"Evelyn Waugh\",\n" +
-                        "        \"title\": \"Sword of Honour\",\n" +
-                        "        \"price\": 12.99\n" +
-                        "      },\n" +
-                        "      { \"category\": \"fiction\",\n" +
-                        "        \"author\": \"Herman Melville\",\n" +
-                        "        \"title\": \"Moby Dick\",\n" +
-                        "        \"isbn\": \"0-553-21311-3\",\n" +
-                        "        \"price\": 8.99\n" +
-                        "      },\n" +
-                        "      { \"category\": \"fiction\",\n" +
-                        "        \"author\": \"J. R. R. Tolkien\",\n" +
-                        "        \"title\": \"The Lord of the Rings\",\n" +
-                        "        \"isbn\": \"0-395-19395-8\",\n" +
-                        "        \"price\": 22.99\n" +
-                        "      }\n" +
-                        "    ],\n" +
-                        "    \"bicycle\": {\n" +
-                        "      \"color\": \"red\",\n" +
-                        "      \"price\": 19.95    }\n" +
-                        "  }\n" +
-                        "}")));
-
-        // when
-        get("/jsonStore").then().assertThat().body(JsonSchemaValidator.matchesJsonSchemaInClasspath("store-schema-isbn-required.json"));
+    @Test
+    void json_schema_validator_supports_draft_03_failures() {
+        assertThatThrownBy(() ->
+                get("/jsonStore").then().assertThat().body(JsonSchemaValidator.matchesJsonSchemaInClasspath("store-schema-isbn-required.json"))
+        )
+                .isInstanceOf(AssertionError.class)
+                .hasMessageContaining("Response body doesn't match expectation.")
+                .hasMessageContaining("object has missing required properties ([\"isbn\"])\n")
+                .hasMessageContaining("store-schema-isbn-required.json#\",\"pointer\":\"/properties/store/properties/book/items/1\"")
+                .hasMessageContaining("required: [\"isbn\"]")
+                .hasMessageContaining("missing: [\"isbn\"]")
+                .hasMessageContaining("Actual: { \"store\": {");
     }
 
-    @Test public void
+    @Test
+    public void
     greet_json_resource_conforms_to_the_greeting_schema() {
         given().
                 param("firstName", "John").
                 param("lastName", "Doe").
-        when().
+                when().
                 get("/greetJSON").
-        then().
+                then().
                 body(JsonSchemaValidator.matchesJsonSchemaInClasspath("greeting-schema.json"));
     }
 
-    @Test public void
-    json_schema_validator_supports_matching_uri_json_schema_as_json_node() throws Exception {
+    @Test
+    void json_schema_validator_supports_matching_uri_json_schema_as_json_node() throws Exception {
         // Given
-        String schema = IOUtils.toString(Thread.currentThread().getContextClassLoader().getResourceAsStream("products-schema.json"));
-        MockWebServer server = new MockWebServer();
-        server.enqueue(new MockResponse().setResponseCode(200).setBody(schema));
-        server.play();
-        try {
-            get("/products").then().assertThat().body(JsonSchemaValidator.matchesJsonSchema(new URI("http://localhost:"+server.getPort())).using(settings().parseUriAndUrlsAsJsonNode(true)));
-        } finally {
-            server.shutdown();
+        String schema = IOUtils.toString(Thread.currentThread().getContextClassLoader().getResourceAsStream("products-schema.json"), StandardCharsets.UTF_8);
+        try (MockWebServer server = new MockWebServer()) {
+            server.enqueue(new MockResponse.Builder().code(200).body(schema).build());
+            server.start();
+            get("/products").then().assertThat().body(JsonSchemaValidator.matchesJsonSchema(new URI("http://localhost:" + server.getPort())).using(settings().parseUriAndUrlsAsJsonNode(true)));
         }
     }
 
-    @Test public void
-    json_schema_validator_supports_matching_uri_json_schema_as_string_to_uri() throws Exception {
+    @Test
+    void json_schema_validator_supports_matching_uri_json_schema_as_string_to_uri() throws Exception {
         // Given
-        String schema = IOUtils.toString(Thread.currentThread().getContextClassLoader().getResourceAsStream("products-schema.json"));
-        MockWebServer server = new MockWebServer();
-        server.enqueue(new MockResponse().setResponseCode(200).setBody(schema));
-        server.play();
-        try {
-            get("/products").then().assertThat().body(JsonSchemaValidator.matchesJsonSchema(new URI("http://localhost:"+server.getPort())).using(settings().parseUriAndUrlsAsJsonNode(false)));
-        } finally {
-            server.shutdown();
+        String schema = IOUtils.toString(Thread.currentThread().getContextClassLoader().getResourceAsStream("products-schema.json"), StandardCharsets.UTF_8);
+        try (MockWebServer server = new MockWebServer()) {
+            server.enqueue(new MockResponse.Builder().code(200).body(schema).build());
+            server.start();
+            get("/products").then().assertThat().body(JsonSchemaValidator.matchesJsonSchema(new URI("http://localhost:" + server.getPort())).using(settings().parseUriAndUrlsAsJsonNode(false)));
         }
     }
 }

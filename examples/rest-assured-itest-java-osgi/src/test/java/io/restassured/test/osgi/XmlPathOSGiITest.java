@@ -26,13 +26,15 @@ import org.ops4j.pax.exam.junit.PaxExam;
 import java.util.UUID;
 
 import static io.restassured.path.xml.XmlPath.from;
+import static io.restassured.test.osgi.options.RestAssuredPaxExamOptions.restAssuredBundles;
 import static io.restassured.test.osgi.options.RestAssuredPaxExamOptions.restAssuredJunitBundles;
+import static io.restassured.test.osgi.options.RestAssuredPaxExamOptions.spiflyBundles;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.ops4j.pax.exam.Constants.EXAM_FAIL_ON_UNRESOLVED_KEY;
 import static org.ops4j.pax.exam.CoreOptions.*;
 
 /**
- * This test aims to prove that xml-path is available as a valid OSGi bundle.
+ * This test aims to prove that xml-path-gpath is available as a valid OSGi bundle.
  */
 @RunWith(PaxExam.class)
 public class XmlPathOSGiITest {
@@ -50,25 +52,19 @@ public class XmlPathOSGiITest {
 
                         /* Transitive dependencies needed in the Pax Exam container.
                         Some of these need to be wrapped because they are not available as OSGi bundles */
-                        mavenBundle().groupId("org.apache.aries.spifly").artifactId("org.apache.aries.spifly.dynamic.bundle").version("1.2.1"),
+                        spiflyBundles(),
                         mavenBundle().groupId("org.hamcrest").artifactId("hamcrest").versionAsInProject(),
                         mavenBundle().groupId("org.apache.commons").artifactId("commons-lang3").versionAsInProject(),
-                        mavenBundle().groupId("org.codehaus.groovy").artifactId("groovy-json").versionAsInProject().noStart(),
-                        mavenBundle().groupId("org.codehaus.groovy").artifactId("groovy-xml").versionAsInProject().noStart(),
-                        mavenBundle().groupId("org.codehaus.groovy").artifactId("groovy").versionAsInProject(),
+                        mavenBundle().groupId("org.apache.groovy").artifactId("groovy-json").versionAsInProject().noStart(),
+                        mavenBundle().groupId("org.apache.groovy").artifactId("groovy-xml").versionAsInProject().noStart(),
+                        mavenBundle().groupId("org.apache.groovy").artifactId("groovy").versionAsInProject(),
 
                         wrappedBundle(mavenBundle().groupId("org.ccil.cowan.tagsoup").artifactId("tagsoup").versionAsInProject()),
-                        wrappedBundle(mavenBundle("jakarta.xml.bind", "jakarta.xml.bind-api").versionAsInProject()),
                         wrappedBundle(mavenBundle("javax.activation", "activation").version("1.1.1")),
-                        wrappedBundle(mavenBundle("org.apache.httpcomponents", "httpclient").versionAsInProject()),
-                        wrappedBundle(mavenBundle("org.apache.httpcomponents", "httpmime").versionAsInProject()),
-                        wrappedBundle(mavenBundle("org.apache.httpcomponents", "httpcore").versionAsInProject()),
+                        mavenBundle("javax.xml.bind", "jaxb-api").versionAsInProject(),
 
-                        /* Rest Assured dependencies needed in the Pax Exam container to be able to execute the tests below */
-                        mavenBundle("io.rest-assured", "json-path").versionAsInProject(),
-                        mavenBundle("io.rest-assured", "xml-path").versionAsInProject(),
-                        mavenBundle("io.rest-assured", "rest-assured").versionAsInProject(),
-                        mavenBundle("io.rest-assured", "rest-assured-common").versionAsInProject()
+                        /* Rest Assured dependencies needed in the Pax Exam container (the bundles built by this build) to be able to execute the tests below */
+                        restAssuredBundles()
                 };
     }
 

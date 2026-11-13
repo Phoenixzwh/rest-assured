@@ -16,8 +16,11 @@
 
 package io.restassured.itest.java;
 
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+
 import io.restassured.itest.java.support.WithJetty;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import static io.restassured.RestAssured.*;
 import static org.hamcrest.Matchers.*;
@@ -73,6 +76,19 @@ public class XMLPostITest extends WithJetty {
         expect().
                 body(equalTo("Some Text")).
         when().
+                put("/reflect");
+
+    }
+
+    @Test
+    public void customXmlCompatibleContentTypeWithBodyAsInputStream() throws Exception {
+        InputStream inputStream = new ByteArrayInputStream("Some Text".getBytes());
+        given().
+                contentType("application/vnd.myitem+xml").
+                body(inputStream).
+                expect().
+                body(equalTo("Some Text")).
+                when().
                 put("/reflect");
 
     }

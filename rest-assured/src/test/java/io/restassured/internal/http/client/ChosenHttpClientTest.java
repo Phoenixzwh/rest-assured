@@ -1,0 +1,238 @@
+/*
+ * Copyright 2026 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *        http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package io.restassured.internal.http.client;
+
+import io.restassured.authentication.AuthenticationScheme;
+import io.restassured.common.exception.ResponseTimeoutException;
+import io.restassured.common.spi.http.HttpHeader;
+import io.restassured.common.spi.http.HttpRequest;
+import io.restassured.common.spi.http.HttpResponse;
+import io.restassured.common.spi.http.NtlmCredentials;
+import io.restassured.common.spi.http.UnsupportedFeatureException;
+import io.restassured.config.HttpClientConfig;
+import io.restassured.builder.RequestSpecBuilder;
+import io.restassured.config.RestAssuredConfig;
+import io.restassured.specification.RequestSpecification;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+
+import java.io.ByteArrayInputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpTimeoutException;
+import java.time.Duration;
+import java.util.List;
+
+import static io.restassured.RestAssured.given;
+import static io.restassured.config.HttpClientConfig.httpClientConfig;
+import static io.restassured.config.RestAssuredConfig.config;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.hamcrest.Matchers.equalTo;
+
+/**
+ * Requests sent with a client chosen with {@link HttpClientConfig#client(Class)}, a fake that sends nothing.
+ */
+class ChosenHttpClientTest {
+    private static final HttpClientConfig APACHE5 = httpClientConfig().client(FakeHttpClients.Apache5.class);
+
+    @AfterEach
+    void reset() {
+        FakeHttpClients.reset();
+    }
+
+    private static RequestSpecification with(HttpClientConfig httpClientConfig) {
+        return with(config().httpClient(httpClientConfig));
+    }
+
+    private static RequestSpecification with(RestAssuredConfig config) {
+        return given().config(config);
+    }
+
+    private static RequestSpecification withAuthenticationScheme(AuthenticationScheme scheme) {
+        return given(new RequestSpecBuilder().setAuth(scheme).build()).config(config().httpClient(APACHE5));
+    }
+
+    @Test
+    void the_request_is_sent_with_the_chosen_client_which_is_closed_after_the_response() {
+        with(APACHE5.readTimeout(Duration.ofSeconds(3)).connectTimeout(Duration.ofSeconds(2))).
+                queryParam("q", "a b").
+        when().
+                get("http://localhost:1234/path").
+        then().
+                statusCode(200).
+                body(equalTo("ok"));
+
+        HttpRequest request = FakeHttpClients.sent.get(0);
+        assertThat(request.method()).isEqualTo("GET");
+        assertThat(request.uri()).isEqualTo(URI.create("http://localhost:1234/path?q=a%20b"));
+        assertThat(request.options().readTimeout()).isEqualTo(Duration.ofSeconds(3));
+        assertThat(FakeHttpClients.created).singleElement().satisfies(client -> {
+            assertThat(client.settings.connectTimeout()).isEqualTo(Duration.ofSeconds(2));
+            assertThat(client.closed).isTrue();
+        });
+    }
+
+    @Test
+    void certificate_authentication_gives_the_client_its_key_store() {
+        with(APACHE5).auth().certificate("client.p12", "secret").get("https://localhost/path");
+
+        assertThat(FakeHttpClients.sent.get(0).uri()).isEqualTo(URI.create("https://localhost/path"));
+        assertThat(FakeHttpClients.created.get(0).settings.tls().keyStore().path()).isEqualTo("client.p12");
+    }
+
+    @Test
+    void preemptive_basic_authentication_sends_the_header() {
+        with(APACHE5).auth().preemptive().basic("user", "password").get("http://localhost/path");
+
+        assertThat(FakeHttpClients.sent.get(0).headers()).anySatisfy(header -> {
+            assertThat(header.name()).isEqualTo("Authorization");
+            assertThat(header.value()).isEqualTo("Basic dXNlcjpwYXNzd29yZA==");
+        });
+    }
+
+    @Test
+    void ntlm_authentication_gives_the_client_the_credentials() {
+        with(APACHE5).auth().ntlm("user", "password", "workstation", "domain").get("http://localhost:1234/path");
+
+        assertThat(FakeHttpClients.sent.get(0).options().ntlm())
+                .isEqualTo(new NtlmCredentials("localhost", 1234, "user", "password", "workstation", "domain"));
+    }
+
+    @Test
+    void authentication_that_answers_a_challenge_sends_no_credentials_until_the_server_asks() {
+        FakeHttpClients.response = request -> request.headers().stream().anyMatch(header -> header.name().equals("Authorization"))
+                ? FakeHttpClients.ok("ok") : unauthorized();
+
+        with(APACHE5).auth().basic("user", "password").
+        when().
+                get("http://localhost/path").
+        then().
+                statusCode(200);
+
+        assertThat(FakeHttpClients.sent).hasSize(2);
+        assertThat(FakeHttpClients.sent.get(0).headers()).noneSatisfy(header -> assertThat(header.name()).isEqualTo("Authorization"));
+        assertThat(FakeHttpClients.sent.get(1).headers()).anySatisfy(header -> {
+            assertThat(header.name()).isEqualTo("Authorization");
+            assertThat(header.value()).isEqualTo("Basic dXNlcjpwYXNzd29yZA==");
+        });
+    }
+
+    @Test
+    void a_redirect_is_followed_by_the_chosen_client() {
+        FakeHttpClients.response = request -> request.uri().getPath().equals("/path")
+                ? redirect("http://localhost/moved") : FakeHttpClients.ok("ok");
+
+        with(APACHE5).get("http://localhost/path").then().statusCode(200);
+
+        assertThat(FakeHttpClients.sent).hasSize(2);
+        assertThat(FakeHttpClients.sent.get(1).uri()).isEqualTo(URI.create("http://localhost/moved"));
+    }
+
+    @Test
+    void one_client_sends_the_redirect_and_the_answer_to_the_challenge_and_is_closed_after_the_last_response() {
+        FakeHttpClients.response = request -> {
+            if (request.uri().getPath().equals("/path")) {
+                return redirect("http://localhost:8080/moved");
+            }
+            return request.headers().stream().anyMatch(header -> header.name().equals("Authorization")) ? FakeHttpClients.ok("ok") : unauthorized();
+        };
+
+        with(APACHE5).auth().basic("user", "password").get("http://localhost/path").then().statusCode(200).body(equalTo("ok"));
+
+        assertThat(FakeHttpClients.sent).extracting(request -> request.uri().getPath()).containsExactly("/path", "/moved", "/moved");
+        assertThat(FakeHttpClients.created).singleElement().satisfies(client -> assertThat(client.closes).hasValue(1));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Content-Length", "transfer-encoding"})
+    void a_header_with_the_length_of_the_body_is_rejected_before_any_client_sees_it(String name) {
+        String standardName = name.equals("Content-Length") ? "Content-Length" : "Transfer-Encoding";
+        for (Class<? extends FakeHttpClients.FakeProvider> client : List.of(FakeHttpClients.Apache5.class, FakeHttpClients.Other.class)) {
+            assertThatThrownBy(() -> with(httpClientConfig().client(client)).header(name, "3").body("abc").post("http://localhost/path"))
+                    .isExactlyInstanceOf(UnsupportedOperationException.class)
+                    .hasMessage("REST Assured can't send a " + standardName + " header that the request sets. Remove the header: REST Assured "
+                            + "sends the length of the body itself, as a Content-Length header, or chunked when the length is unknown.");
+        }
+        assertThat(FakeHttpClients.created).isEmpty();
+    }
+
+    @Test
+    void the_standard_reason_phrase_is_filled_in_when_the_client_gives_none() {
+        FakeHttpClients.response = request -> {
+            int status = Integer.parseInt(request.uri().getPath().substring(1));
+            String reasonPhrase = status == 202 ? "Taken" : null;
+            return new HttpResponse("HTTP/1.1", status, reasonPhrase, List.of(), 0, new ByteArrayInputStream(new byte[0]), null);
+        };
+
+        assertThat(with(APACHE5).get("http://localhost/201").statusLine()).isEqualTo("HTTP/1.1 201 Created");
+        assertThat(with(APACHE5).get("http://localhost/202").statusLine()).isEqualTo("HTTP/1.1 202 Taken");
+        assertThat(with(APACHE5).get("http://localhost/299").statusLine()).isEqualTo("HTTP/1.1 299 ");
+    }
+
+    private static HttpResponse unauthorized() {
+        return new HttpResponse("HTTP/1.1", 401, "Unauthorized", List.of(new HttpHeader("WWW-Authenticate", "Basic realm=\"test\"")),
+                0, new ByteArrayInputStream(new byte[0]), null);
+    }
+
+    private static HttpResponse redirect(String location) {
+        return new HttpResponse("HTTP/1.1", 302, "Found", List.of(new HttpHeader("Location", location)),
+                0, new ByteArrayInputStream(new byte[0]), null);
+    }
+
+    @Test
+    void customizers_are_given_to_the_chosen_client() {
+        with(APACHE5.customizeClient(FakeHttpClients.Apache5Builder.class, builder -> { })).get("http://localhost/path");
+
+        assertThat(FakeHttpClients.created.get(0).settings.customizers()).singleElement()
+                .satisfies(customizer -> assertThat(customizer.builderType()).isEqualTo(FakeHttpClients.Apache5Builder.class));
+    }
+
+    @Test
+    void a_customizer_for_another_client_fails_before_the_request_is_sent() {
+        assertThatThrownBy(() -> with(APACHE5.customizeClient(HttpClient.Builder.class, builder -> { })).get("http://localhost/path"))
+                .isExactlyInstanceOf(UnsupportedOperationException.class)
+                .hasMessage("A customizer for java.net.http.HttpClient$Builder is configured, but REST Assured uses Apache HttpClient 5.");
+        assertThat(FakeHttpClients.created).isEmpty();
+    }
+
+    @Test
+    void what_the_client_cant_do_fails_with_how_it_was_chosen() {
+        FakeHttpClients.response = request -> {
+            throw new UnsupportedFeatureException("do this", "do that");
+        };
+
+        assertThatThrownBy(() -> with(APACHE5).get("http://localhost/path"))
+                .isExactlyInstanceOf(UnsupportedOperationException.class)
+                .hasMessage("Apache HttpClient 5 (chosen with httpClientConfig().client(" + FakeHttpClients.Apache5.class.getName() + ".class)) can't do this. "
+                        + "Choose another client, or do that.");
+        assertThat(FakeHttpClients.created.get(0).closed).isTrue();
+    }
+
+    @Test
+    void a_timeout_of_the_client_throws_response_timeout_exception() {
+        HttpTimeoutException timeout = new HttpTimeoutException("request timed out");
+        FakeHttpClients.response = request -> {
+            throw timeout;
+        };
+
+        assertThatThrownBy(() -> with(APACHE5).get("http://localhost/path")).isExactlyInstanceOf(ResponseTimeoutException.class).hasCause(timeout);
+        assertThat(FakeHttpClients.created.get(0).closed).isTrue();
+    }
+}

@@ -19,26 +19,28 @@ package io.restassured.filter.cookie;
 import io.restassured.filter.Filter;
 import io.restassured.filter.FilterContext;
 import io.restassured.filter.session.SessionFilter;
+import io.restassured.http.Cookies;
+import io.restassured.internal.RestAssuredResponseImpl;
+import io.restassured.internal.http.cookie.CookieOrigin;
+import io.restassured.internal.http.cookie.CookieSpec;
+import io.restassured.internal.http.cookie.CookieStore;
+import io.restassured.internal.http.cookie.Rfc6265CookieSpec;
+import io.restassured.internal.http.cookie.StoredCookie;
 import io.restassured.response.Response;
 import io.restassured.specification.FilterableRequestSpecification;
 import io.restassured.specification.FilterableResponseSpecification;
-import org.apache.http.Header;
-import org.apache.http.cookie.Cookie;
-import org.apache.http.cookie.CookieOrigin;
-import org.apache.http.cookie.CookieSpec;
-import org.apache.http.cookie.MalformedCookieException;
-import org.apache.http.impl.client.BasicCookieStore;
-import org.apache.http.impl.cookie.DefaultCookieSpec;
-import org.apache.http.message.BasicHeader;
 
-import java.net.MalformedURLException;
-import java.net.URL;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+
+import static io.restassured.internal.common.assertion.AssertParameter.notNull;
 
 /**
  * The cookie filter can be used to keep track of all the cookies sent by the server and use them in subsequent requests.
- * It matches the cookies to the request URL within the rules implemented in {@link DefaultCookieSpec}.
+ * It matches the cookies to the request URL within the rules of RFC 6265.
  * It might come in handy when more than just the {@link SessionFilter} and browser-like cookie matching is needed.
  * For example:
  * <pre>
@@ -64,7 +66,7 @@ import java.util.List;
 public class CookieFilter implements Filter {
     private final boolean allowMultipleCookiesWithTheSameName;
     private final CookieSpec cookieSpec;
-    private final BasicCookieStore cookieStore;
+    private final CookieStore cookieStore;
 
     /**
      * Create an instance of {@link CookieFilter} that will prevent cookies with the same name to be sent twice.
@@ -83,52 +85,126 @@ public class CookieFilter implements Filter {
      */
     public CookieFilter(boolean allowMultipleCookiesWithTheSameName) {
         this.allowMultipleCookiesWithTheSameName = allowMultipleCookiesWithTheSameName;
-        this.cookieSpec = new DefaultCookieSpec();
-        this.cookieStore = new BasicCookieStore();
+        this.cookieSpec = new Rfc6265CookieSpec();
+        this.cookieStore = new CookieStore();
     }
 
     public Response filter(FilterableRequestSpecification requestSpec, FilterableResponseSpecification responseSpec, FilterContext ctx) {
-
-        final CookieOrigin cookieOrigin = cookieOriginFromUri(requestSpec.getURI());
-        for (Cookie cookie : cookieStore.getCookies()) {
-            if (cookieSpec.match(cookie, cookieOrigin) && allowMultipleCookiesWithTheSameNameOrCookieNotPreviouslyDefined(requestSpec, cookie)) {
+        CookieOrigin cookieOrigin = cookieOriginFromUri(requestSpec.getURI());
+        for (StoredCookie cookie : cookieStore.match(cookieSpec, cookieOrigin)) {
+            if (allowMultipleCookiesWithTheSameNameOrCookieNotPreviouslyDefined(requestSpec, cookie)) {
                 requestSpec.cookie(cookie.getName(), cookie.getValue());
             }
         }
 
         final Response response = ctx.next(requestSpec, responseSpec);
-
-        List<Cookie> responseCookies = extractResponseCookies(response, cookieOrigin);
-        cookieStore.addCookies(responseCookies.toArray(new Cookie[0]));
+        storeCookiesFromResponseIfApplicable(cookieOrigin, response);
         return response;
     }
 
-    private boolean allowMultipleCookiesWithTheSameNameOrCookieNotPreviouslyDefined(FilterableRequestSpecification requestSpec, Cookie cookie) {
+    public CookieFilter storeCookiesFromResponseIfApplicable(String requestUri, Response response) {
+        CookieOrigin cookieOrigin = cookieOriginFromUri(requestUri);
+        storeCookiesFromResponseIfApplicable(cookieOrigin, response);
+        return this;
+    }
+
+
+    private void storeCookiesFromResponseIfApplicable(CookieOrigin cookieOrigin, Response response) {
+        // When the server responds with a redirect (e.g., 302), REST Assured follows it and issues a new request.
+        // However, its request URI (requestSpec.getURI()) still reflects the original URI, not the final one that set
+        // the cookies. Since cookies are path- and domain-scoped, we must use the *effective* URI of the final response
+        // (after redirects). Otherwise, valid Set-Cookie headers might be rejected due to a mismatched domain or path.
+        if (response instanceof RestAssuredResponseImpl) {
+            URI effectiveUri = ((RestAssuredResponseImpl) response).getEffectiveUri();
+            if (effectiveUri != null) {
+                cookieOrigin = CookieOrigin.of(effectiveUri);
+            }
+        }
+
+        for (String cookieValue : response.getHeaders().getValues("Set-Cookie")) {
+            StoredCookie cookie = cookieSpec.parse(cookieValue, cookieOrigin);
+            if (cookie != null) {
+                cookieStore.add(cookie);
+            }
+        }
+    }
+
+    private boolean allowMultipleCookiesWithTheSameNameOrCookieNotPreviouslyDefined(FilterableRequestSpecification requestSpec, StoredCookie cookie) {
         return allowMultipleCookiesWithTheSameName || !requestSpec.getCookies().hasCookieWithName(cookie.getName());
     }
 
-    private List<Cookie> extractResponseCookies(Response response, CookieOrigin cookieOrigin) {
-
-        List<Cookie> cookies = new ArrayList<Cookie>();
-        for (String cookieValue : response.getHeaders().getValues("Set-Cookie")) {
-            Header setCookieHeader = new BasicHeader("Set-Cookie", cookieValue);
-            try {
-                cookies.addAll(cookieSpec.parse(setCookieHeader, cookieOrigin));
-            } catch (MalformedCookieException ignored) {
-            }
-        }
-        return cookies;
-    }
-
     private CookieOrigin cookieOriginFromUri(String uri) {
-
         try {
-            URL parsedUrl = new URL(uri);
-            int port = parsedUrl.getPort() != -1 ? parsedUrl.getPort() : 80;
-            return new CookieOrigin(
-                    parsedUrl.getHost(), port, parsedUrl.getPath(), "https".equals(parsedUrl.getProtocol()));
-        } catch (MalformedURLException e) {
+            return CookieOrigin.of(new URI(uri));
+        } catch (URISyntaxException e) {
             throw new IllegalArgumentException(e);
         }
+    }
+
+    /**
+     * @return A snapshot of the cookies this filter has stored. Expired cookies are left out.
+     */
+    public Cookies getCookies() {
+        List<io.restassured.http.Cookie> cookies = new ArrayList<>();
+        Date now = new Date();
+        for (StoredCookie cookie : cookieStore.cookies()) {
+            if (cookie.isExpired(now)) {
+                continue;
+            }
+            io.restassured.http.Cookie.Builder builder = new io.restassured.http.Cookie.Builder(cookie.getName(), cookie.getValue())
+                    .setSecured(cookie.isSecure())
+                    .setVersion(cookie.getVersion());
+            if (cookie.getDomain() != null) {
+                builder.setDomain(cookie.getDomain());
+            }
+            if (cookie.getPath() != null) {
+                builder.setPath(cookie.getPath());
+            }
+            if (cookie.getExpiryDate() != null) {
+                builder.setExpiryDate(cookie.getExpiryDate());
+            }
+            if (cookie.getComment() != null) {
+                builder.setComment(cookie.getComment());
+            }
+            if (cookie.isHttpOnly()) {
+                builder.setHttpOnly(true);
+            }
+            cookies.add(builder.build());
+        }
+        return new Cookies(cookies);
+    }
+
+    /**
+     * Store a cookie in this filter, so that it's sent in the requests it matches, as if a response had set it.
+     * The cookie must have a domain, and it's sent only to that host. Without a path it's sent for every path.
+     * It replaces a stored cookie with the same name, domain and path.
+     *
+     * @param cookie The cookie to store.
+     * @return This CookieFilter
+     */
+    public CookieFilter addCookie(io.restassured.http.Cookie cookie) {
+        notNull(cookie, "cookie");
+        if (!cookie.hasDomain()) {
+            throw new IllegalArgumentException("Cookie '" + cookie.getName() + "' needs a domain to be added to a CookieFilter");
+        }
+        StoredCookie storedCookie = new StoredCookie(cookie.getName(), cookie.getValue());
+        storedCookie.setDomain(cookie.getDomain());
+        storedCookie.setPath(cookie.hasPath() ? cookie.getPath() : "/");
+        storedCookie.setSecure(cookie.isSecured());
+        if (cookie.hasExpiryDate()) {
+            storedCookie.setExpiryDate(cookie.getExpiryDate());
+        } else if (cookie.hasMaxAge() && cookie.getMaxAge() >= 0) {
+            // Like a Max-Age attribute in a response, which REST Assured turns into an expiry date
+            storedCookie.setExpiryDate(new Date(System.currentTimeMillis() + cookie.getMaxAge() * 1000L));
+        }
+        if (cookie.hasComment()) {
+            storedCookie.setComment(cookie.getComment());
+        }
+        if (cookie.hasVersion()) {
+            storedCookie.setVersion(cookie.getVersion());
+        }
+        storedCookie.setHttpOnly(cookie.isHttpOnly());
+        cookieStore.add(storedCookie);
+        return this;
     }
 }

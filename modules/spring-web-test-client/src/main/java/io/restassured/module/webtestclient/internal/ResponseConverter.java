@@ -32,7 +32,8 @@ class ResponseConverter {
 		WebTestClientRestAssuredResponseImpl webTestClientRestAssuredResponse = (WebTestClientRestAssuredResponseImpl) response;
 
         RestAssuredResponseImpl standardResponse = new RestAssuredResponseImpl();
-        standardResponse.setConnectionManager(webTestClientRestAssuredResponse.getConnectionManager());
+        standardResponse.setConfig(webTestClientRestAssuredResponse.getConfig());
+        standardResponse.setResponseCloser(webTestClientRestAssuredResponse.getResponseCloser());
         standardResponse.setContent(webTestClientRestAssuredResponse.getContent());
         standardResponse.setContentType(webTestClientRestAssuredResponse.getContentType());
         standardResponse.setCookies(webTestClientRestAssuredResponse.detailedCookies());
@@ -46,6 +47,7 @@ class ResponseConverter {
         standardResponse.setRpr(webTestClientRestAssuredResponse.getRpr());
         standardResponse.setFilterContextProperties(webTestClientRestAssuredResponse.getFilterContextProperties());
         standardResponse.setLogRepository(webTestClientRestAssuredResponse.getLogRepository());
+        standardResponse.setEffectiveUri(webTestClientRestAssuredResponse.getEffectiveUri());
         return standardResponse;
 	}
 

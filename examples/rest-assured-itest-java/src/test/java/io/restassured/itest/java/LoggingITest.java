@@ -29,6 +29,8 @@ import io.restassured.http.ContentType;
 import io.restassured.itest.java.objects.Greeting;
 import io.restassured.itest.java.objects.Message;
 import io.restassured.itest.java.objects.ScalatraObject;
+import io.restassured.itest.java.support.ResponseLog;
+import io.restassured.itest.java.support.TestClient;
 import io.restassured.itest.java.support.WithJetty;
 import io.restassured.parsing.Parser;
 import io.restassured.response.Response;
@@ -38,9 +40,9 @@ import io.restassured.specification.RequestSpecification;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.io.output.WriterOutputStream;
 import org.apache.commons.lang3.SystemUtils;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.io.InputStream;
 import java.io.PrintStream;
@@ -60,18 +62,20 @@ import static io.restassured.filter.log.RequestLoggingFilter.logRequestTo;
 import static io.restassured.filter.log.ResponseLoggingFilter.logResponseTo;
 import static io.restassured.filter.log.ResponseLoggingFilter.logResponseToIfMatches;
 import static io.restassured.parsing.Parser.JSON;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class LoggingITest extends WithJetty {
 
-    @Before
+    @BeforeEach
     public void setup() {
         RestAssured.config = config().logConfig(LogConfig.logConfig().enablePrettyPrinting(false));
     }
 
-    @After
+    @AfterEach
     public void teardown() {
         RestAssured.reset();
     }
@@ -110,6 +114,22 @@ public class LoggingITest extends WithJetty {
         final PrintStream captor = new PrintStream(new WriterOutputStream(writer), true);
         given().filter(logResponseTo(captor)).and().expect().body(equalTo("OK")).when().get("/multiCookie");
         System.out.println(writer.toString());
+        if (TestClient.isJdk()) {
+            // JDK differences table, header names and order
+            assertThat(writer.toString(), allOf(
+                    startsWith("HTTP/1.1 200 OK\n" +
+                            "content-length: 2\n" +
+                            "content-type: text/plain;charset=utf-8\n" +
+                            "expires: "),
+                    containsString("\nserver: Jetty(9.4.58.v20250814)\n" +
+                            "set-cookie: cookie1=cookieValue1; Domain=localhost\n" +
+                            "set-cookie: cookie1=cookieValue2; Path=/; Domain=localhost; Expires="),
+                    endsWith("; Max-Age=1234567; Secure\n" +
+                            "\n" +
+                            "OK\n")
+            ));
+            return;
+        }
         assertThat(writer.toString(), allOf(
                 startsWith("HTTP/1.1 200 OK\n" +
                         "Content-Type: text/plain;charset=utf-8\n" +
@@ -118,7 +138,7 @@ public class LoggingITest extends WithJetty {
                 containsString("Set-Cookie: cookie1=cookieValue2; Path=/; Domain=localhost; Expires="),
                 endsWith("; Max-Age=1234567; Secure\n" +
                         "Content-Length: 2\n" +
-                        "Server: Jetty(9.4.34.v20201102)\n" +
+                        "Server: Jetty(9.4.58.v20250814)\n" +
                         "\n" +
                         "OK\n")
         ));
@@ -240,9 +260,9 @@ public class LoggingITest extends WithJetty {
                 RestAssured.config().getEncoderConfig().defaultContentCharset())));
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void loggingRequestFilterDoesntAcceptStatusAsLogDetail() {
-        new RequestLoggingFilter(LogDetail.STATUS);
+        assertThatIllegalArgumentException().isThrownBy(() -> new RequestLoggingFilter(LogDetail.STATUS));
     }
 
     @Test
@@ -342,7 +362,8 @@ public class LoggingITest extends WithJetty {
         when().
                 post("/reflect");
 
-        assertThat(writer.toString(), equalTo(String.format("Request method:\tPOST%n" +
+        // JDK differences table, header names and order
+        assertThat(writer.toString(), equalTo(ResponseLog.normalize(String.format("Request method:\tPOST%n" +
                         "Request URI:\thttp://localhost:8080/reflect%n" +
                         "Proxy:\t\t\t<none>%n" +
                         "Request params:\t<none>%n" +
@@ -357,10 +378,10 @@ public class LoggingITest extends WithJetty {
                         "{\"hello\":\"Hello world\"}%n" + "HTTP/1.1 200 OK%n" +
                         "Content-Type: text/plain;charset=iso-8859-1%n" +
                         "Content-Length: 23%n" +
-                        "Server: Jetty(9.4.34.v20201102)%n" +
+                        "Server: Jetty(9.4.58.v20250814)%n" +
                         "%n" +
                         "{\"hello\":\"Hello world\"}%n",
-                RestAssured.config().getEncoderConfig().defaultContentCharset())));
+                RestAssured.config().getEncoderConfig().defaultContentCharset()))));
     }
 
     @Test
@@ -378,7 +399,8 @@ public class LoggingITest extends WithJetty {
         when().
                 post("/reflect");
 
-        assertThat(writer.toString(), equalTo(String.format("Request method:\tPOST%n" +
+        // JDK differences table, header names and order
+        assertThat(writer.toString(), equalTo(ResponseLog.normalize(String.format("Request method:\tPOST%n" +
                         "Request URI:\thttp://localhost:8080/reflect%n" +
                         "Proxy:\t\t\t<none>%n" +
                         "Request params:\t<none>%n" +
@@ -393,10 +415,52 @@ public class LoggingITest extends WithJetty {
                         "{\"hello\":\"Hello world\"}%n" + "HTTP/1.1 200 OK%n" +
                         "Content-Type: text/plain;charset=iso-8859-1%n" +
                         "Content-Length: 23%n" +
-                        "Server: Jetty(9.4.34.v20201102)%n" +
+                        "Server: Jetty(9.4.58.v20250814)%n" +
                         "%n" +
                         "{\"hello\":\"Hello world\"}%n",
-                RestAssured.config().getEncoderConfig().defaultContentCharset())));
+                RestAssured.config().getEncoderConfig().defaultContentCharset()))));
+    }
+
+    @Test
+    public void ensureResponseLoggerUsesRegisteredCustomParserWhenValidatingBody() {
+        RestAssured.registerParser("application/x-custom-content-type", JSON);
+        try {
+            final StringWriter writer = new StringWriter();
+            final PrintStream captor = new PrintStream(new WriterOutputStream(writer), true);
+
+            final ScalatraObject object = new ScalatraObject();
+            object.setHello("Hello world");
+            given()
+                .filters(new ResponseLoggingFilter(captor))
+                .config(RestAssured.config()
+                    .encoderConfig(encoderConfig().encodeContentTypeAs(
+                        "application/x-custom-content-type",
+                        ContentType.JSON
+                    )))
+                .contentType("application/x-custom-content-type")
+                .body(object)
+            .expect()
+                .defaultParser(JSON)
+            .when()
+                .post("/reflect")
+            .then()
+                .body("hello", equalTo("Hello world"));
+
+            // JDK differences table, header names and order
+            assertThat(
+                writer.toString(), equalTo(ResponseLog.normalize(String.format(
+                    "HTTP/1.1 200 OK\n" +
+                    "Content-Type: application/x-custom-content-type; charset=%s\n" +
+                    "Content-Length: 23\n" +
+                    "Server: Jetty(9.4.58.v20250814)\n" +
+                    "\n" +
+                    "{\"hello\":\"Hello world\"}\n",
+                    RestAssured.config().getEncoderConfig().defaultContentCharset()
+                )))
+            );
+        } finally {
+            RestAssured.unregisterParser("application/x-custom-content-type");
+        }
     }
 
     @Test
@@ -414,12 +478,13 @@ public class LoggingITest extends WithJetty {
         when().
                 get("/{firstName}/{lastName}");
 
-        assertThat(writer.toString(), equalTo(String.format("HTTP/1.1 200 OK%n" +
+        // JDK differences table, header names and order
+        assertThat(writer.toString(), equalTo(ResponseLog.normalize(String.format("HTTP/1.1 200 OK%n" +
                 "Content-Type: application/json;charset=utf-8%n" +
                 "Content-Length: 59%n" +
-                "Server: Jetty(9.4.34.v20201102)%n" +
+                "Server: Jetty(9.4.58.v20250814)%n" +
                 "%n" +
-                "{\"firstName\":\"John\",\"lastName\":\"Doe\",\"fullName\":\"John Doe\"}%n")));
+                "{\"firstName\":\"John\",\"lastName\":\"Doe\",\"fullName\":\"John Doe\"}%n"))));
     }
 
     @Test
@@ -434,12 +499,13 @@ public class LoggingITest extends WithJetty {
                 when().
                 get("/409");
 
-        assertThat(writer.toString(), equalTo(String.format("HTTP/1.1 409 Conflict%n" +
+        // JDK differences table, header names and order
+        assertThat(writer.toString(), equalTo(ResponseLog.normalize(String.format("HTTP/1.1 409 Conflict%n" +
                 "Content-Type: text/plain;charset=utf-8%n" +
                 "Content-Length: 5%n" +
-                "Server: Jetty(9.4.34.v20201102)%n" +
+                "Server: Jetty(9.4.58.v20250814)%n" +
                 "%n" +
-                "ERROR%n")));
+                "ERROR%n"))));
     }
 
     @Test
@@ -469,12 +535,13 @@ public class LoggingITest extends WithJetty {
         when().
                 get("/409");
 
-        assertThat(writer.toString(), equalTo(String.format("HTTP/1.1 409 Conflict%n" +
+        // JDK differences table, header names and order
+        assertThat(writer.toString(), equalTo(ResponseLog.normalize(String.format("HTTP/1.1 409 Conflict%n" +
                 "Content-Type: text/plain;charset=utf-8%n" +
                 "Content-Length: 5%n" +
-                "Server: Jetty(9.4.34.v20201102)%n" +
+                "Server: Jetty(9.4.58.v20250814)%n" +
                 "%n" +
-                "ERROR%n")));
+                "ERROR%n"))));
     }
 
     @Test
@@ -585,20 +652,21 @@ public class LoggingITest extends WithJetty {
                 get("/{firstName}/{lastName}");
 
 
-        assertThat(writer.toString(), equalTo(String.format("HTTP/1.1 200 OK%n" +
+        // JDK differences table, header names and order
+        assertThat(writer.toString(), equalTo(ResponseLog.normalize(String.format("HTTP/1.1 200 OK%n" +
                 "Content-Type: application/json;charset=utf-8%n" +
                 "Content-Length: 59%n" +
-                "Server: Jetty(9.4.34.v20201102)%n" +
+                "Server: Jetty(9.4.58.v20250814)%n" +
                 "%n" +
                 "{\n" +
                 "    \"firstName\": \"John\",\n" +
                 "    \"lastName\": \"Doe\",\n" +
                 "    \"fullName\": \"John Doe\"\n" +
-                "}%n")));
+                "}%n"))));
     }
 
     @Test
-    public void logAllWithPrettyPrintingUsingDSLWhenJson() {
+    public void logAllWithNoPrettyPrintingUsingDSLWhenJson() {
         final StringWriter writer = new StringWriter();
         final PrintStream captor = new PrintStream(new WriterOutputStream(writer), true);
 
@@ -613,40 +681,18 @@ public class LoggingITest extends WithJetty {
                 get("/{firstName}/{lastName}");
 
 
-        assertThat(writer.toString(), equalTo(String.format("HTTP/1.1 200 OK%n" +
-                "Content-Type: application/json;charset=utf-8%n" +
-                "Content-Length: 59%n" +
-                "Server: Jetty(9.4.34.v20201102)%n" +
-                "%n" +
-                "{\n" +
-                "    \"firstName\": \"John\",\n" +
-                "    \"lastName\": \"Doe\",\n" +
-                "    \"fullName\": \"John Doe\"\n" +
-                "}%n")));
-    }
-
-    @Test
-    public void logAllWithNoPrettyPrintingUsingDSLWhenJson() {
-        final StringWriter writer = new StringWriter();
-        final PrintStream captor = new PrintStream(new WriterOutputStream(writer), true);
-
-        given().
-                config(config().logConfig(new LogConfig(captor, true))).
-                pathParam("firstName", "John").
-                pathParam("lastName", "Doe").
-        expect().
-                log().all(false).
-                body("fullName", equalTo("John Doe")).
-        when().
-                get("/{firstName}/{lastName}");
-
-
-        assertThat(writer.toString(), equalTo(String.format("HTTP/1.1 200 OK%n" +
-                "Content-Type: application/json;charset=utf-8%n" +
-                "Content-Length: 59%n" +
-                "Server: Jetty(9.4.34.v20201102)%n" +
-                "%n" +
-                "{\"firstName\":\"John\",\"lastName\":\"Doe\",\"fullName\":\"John Doe\"}%n")));
+        // JDK differences table, header names and order
+        assertThat(writer.toString(), equalTo(ResponseLog.normalize(String.format("""
+                HTTP/1.1 200 OK%n\
+                Content-Type: application/json;charset=utf-8%n\
+                Content-Length: 59%n\
+                Server: Jetty(9.4.58.v20250814)%n\
+                %n\
+                {
+                    "firstName": "John",
+                    "lastName": "Doe",
+                    "fullName": "John Doe"
+                }%n"""))));
     }
 
     @Test
@@ -726,9 +772,10 @@ public class LoggingITest extends WithJetty {
                 get("/{firstName}/{lastName}");
 
 
-        assertThat(writer.toString(), equalTo(String.format("Content-Type: application/json;charset=utf-8%n" +
+        // JDK differences table, header names and order
+        assertThat(writer.toString(), equalTo(ResponseLog.normalize(String.format("Content-Type: application/json;charset=utf-8%n" +
                 "Content-Length: 59%n" +
-                "Server: Jetty(9.4.34.v20201102)%n")));
+                "Server: Jetty(9.4.58.v20250814)%n"))));
     }
 
     @Test
@@ -744,11 +791,12 @@ public class LoggingITest extends WithJetty {
                 get("/multiValueHeader");
 
 
-        assertThat(writer.toString(), equalTo(String.format("Content-Type: text/plain;charset=utf-8%n" +
+        // JDK differences table, header names and order
+        assertThat(writer.toString(), equalTo(ResponseLog.normalize(String.format("Content-Type: text/plain;charset=utf-8%n" +
                 "MultiHeader: Value 1%n" +
                 "MultiHeader: Value 2%n" +
                 "Content-Length: 0%n" +
-                "Server: Jetty(9.4.34.v20201102)%n")));
+                "Server: Jetty(9.4.58.v20250814)%n"))));
     }
 
     @Test
@@ -780,12 +828,13 @@ public class LoggingITest extends WithJetty {
         when().
                 get("/contentTypeJsonButContentIsNotJson");
 
-        assertThat(writer.toString(), equalTo(String.format("HTTP/1.1 200 OK%n" +
+        // JDK differences table, header names and order
+        assertThat(writer.toString(), equalTo(ResponseLog.normalize(String.format("HTTP/1.1 200 OK%n" +
                 "Content-Type: application/json;charset=utf-8%n" +
                 "Content-Length: 33%n" +
-                "Server: Jetty(9.4.34.v20201102)%n" +
+                "Server: Jetty(9.4.58.v20250814)%n" +
                 "%n" +
-                "This is not a valid JSON document%n")));
+                "This is not a valid JSON document%n"))));
     }
 
     @Test
@@ -1181,11 +1230,13 @@ public class LoggingITest extends WithJetty {
                 statusCode(200).
                 body(is(new String(bytes)));
 
+        // JDK differences table, header names and order
+        String start = TestClient.isJdk() ? "HTTP/1.1 200 OK%ncontent-length: " :
+                "HTTP/1.1 200 OK%nContent-Type: text/plain;charset=utf-8%nContent-Length: ";
+        String server = TestClient.isJdk() ? "content-type: text/plain;charset=utf-8%nserver: " : "Server: ";
         assertThat(writer.toString(), allOf(
-                startsWith(String.format("HTTP/1.1 200 OK%n" +
-                        "Content-Type: text/plain;charset=utf-8%n" +
-                        "Content-Length: ")),
-                endsWith(String.format("Server: Jetty(9.4.34.v20201102)%n" +
+                startsWith(String.format(start)),
+                endsWith(String.format(server + "Jetty(9.4.58.v20250814)%n" +
                         "%n" +
                         "<!--\n" +
                         "  ~ Copyright 2019 the original author or authors.\n" +
@@ -1489,11 +1540,45 @@ public class LoggingITest extends WithJetty {
         then().
                 log().all();
 
-        assertThat(writer.toString(), equalTo(String.format("HTTP/1.1 200 OK%n" +
+        // JDK differences table, header names and order
+        assertThat(writer.toString(), equalTo(ResponseLog.normalize(String.format("HTTP/1.1 200 OK%n" +
                 "Content-Type: text/plain;charset=utf-8%n" +
                 "MultiHeader: [ BLACKLISTED ]%n" +
                 "MultiHeader: [ BLACKLISTED ]%n" +
                 "Content-Length: 0%n" +
-                "Server: Jetty(9.4.34.v20201102)%n")));
+                "Server: Jetty(9.4.58.v20250814)%n"))));
+    }
+
+    @Test public void
+    its_possible_to_hide_response_headers_when_blacklist_is_defined_in_log_config_and_the_response_is_logged_with_expect() {
+        final StringWriter writer = new StringWriter();
+        final PrintStream captor = new PrintStream(new WriterOutputStream(writer), true);
+
+        given().
+                config(config().logConfig(logConfig().defaultStream(captor).blacklistHeader("MultiHeader"))).
+        expect().
+                log().all().
+        when().
+                get("/multiValueHeader");
+
+        // JDK differences table, header names and order
+        assertThat(writer.toString(), equalTo(ResponseLog.normalize(String.format("HTTP/1.1 200 OK%n" +
+                "Content-Type: text/plain;charset=utf-8%n" +
+                "MultiHeader: [ BLACKLISTED ]%n" +
+                "MultiHeader: [ BLACKLISTED ]%n" +
+                "Content-Length: 0%n" +
+                "Server: Jetty(9.4.58.v20250814)%n"))));
+    }
+
+    @Test public void
+    its_possible_to_hide_response_headers_when_blacklist_is_defined_in_log_config_and_the_response_is_logged_because_validation_fails() {
+        final StringWriter writer = new StringWriter();
+        final PrintStream captor = new PrintStream(new WriterOutputStream(writer), true);
+        final LogConfig logConfig = logConfig().defaultStream(captor).blacklistHeader("MultiHeader").enableLoggingOfRequestAndResponseIfValidationFails();
+
+        assertThrows(AssertionError.class, () ->
+                given().config(config().logConfig(logConfig)).when().get("/multiValueHeader").then().statusCode(201));
+
+        assertThat(writer.toString(), allOf(containsStringIgnoringCase("MultiHeader: [ BLACKLISTED ]"), not(containsString("Value 1"))));
     }
 }

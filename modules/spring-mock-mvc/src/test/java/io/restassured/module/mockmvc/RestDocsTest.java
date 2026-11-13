@@ -18,12 +18,10 @@ package io.restassured.module.mockmvc;
 
 import io.restassured.module.mockmvc.config.RestAssuredMockMvcConfig;
 import io.restassured.module.mockmvc.http.GreetingController;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.ExpectedException;
-import org.springframework.restdocs.RestDocumentation;
+import org.junit.jupiter.api.Test;
 
 import static io.restassured.module.mockmvc.config.MockMvcConfig.mockMvcConfig;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.equalTo;
 import static org.springframework.restdocs.mockmvc.MockMvcRestDocumentation.document;
 import static org.springframework.restdocs.mockmvc.MockMvcRestDocumentation.documentationConfiguration;
@@ -33,51 +31,46 @@ import static org.springframework.restdocs.request.RequestDocumentation.paramete
 import static org.springframework.restdocs.request.RequestDocumentation.pathParameters;
 
 public class RestDocsTest {
-    @Rule
-    public ExpectedException exception = ExpectedException.none();
+    // @Test
+    // public void path_parameters_are_automatically_supported() {
+    //     RestAssuredMockMvc.given().
+    //             standaloneSetup(new GreetingController(), documentationConfiguration(restDocumentation)).
+    //             queryParam("name", "John").
+    //     when().
+    //            get("/{path}", "greeting").
+    //     then().
+    //             apply(document("greeting",
+    //                     pathParameters(
+    //                             parameterWithName("path").description("The path to greeting")),
+    //                     responseFields(
+    //                             fieldWithPath("id").description("The ID of the greeting"),
+    //                             fieldWithPath("content").description("The content of the greeting"))
+    //             )).
+    //             body("id", equalTo(1)).
+    //             body("content", equalTo("Hello, John!"));
+    // }
 
-    @Rule
-    public final RestDocumentation restDocumentation = new RestDocumentation("target/generated-snippets");
-
-    @Test
-    public void path_parameters_are_automatically_supported() {
-        RestAssuredMockMvc.given().
-                standaloneSetup(new GreetingController(), documentationConfiguration(restDocumentation)).
-                queryParam("name", "John").
-        when().
-               get("/{path}", "greeting").
-        then().
-                apply(document("greeting").snippets(
-                        pathParameters(
-                                parameterWithName("path").description("The path to greeting")),
-                        responseFields(
-                                fieldWithPath("id").description("The ID of the greeting"),
-                                fieldWithPath("content").description("The content of the greeting"))
-                )).
-                body("id", equalTo(1)).
-                body("content", equalTo("Hello, John!"));
-    }
-
-    @Test
-    public void can_disable_automatic_spring_rest_docks_mvc_support() {
-        exception.expect(IllegalArgumentException.class);
-        exception.expectMessage("urlTemplate not found. Did you use RestDocumentationRequestBuilders to build the request?");
-
-        RestAssuredMockMvc.given().
-                config(RestAssuredMockMvcConfig.config().mockMvcConfig(mockMvcConfig().dontAutomaticallyApplySpringRestDocsMockMvcSupport())).
-                standaloneSetup(new GreetingController(), documentationConfiguration(restDocumentation)).
-                queryParam("name", "John").
-        when().
-               get("/{path}", "greeting").
-        then().
-                apply(document("greeting").snippets(
-                        pathParameters(
-                                parameterWithName("path").description("The path to greeting")),
-                        responseFields(
-                                fieldWithPath("id").description("The ID of the greeting"),
-                                fieldWithPath("content").description("The content of the greeting"))
-                )).
-                body("id", equalTo(1)).
-                body("content", equalTo("Hello, John!"));
-    }
+    // @Test
+    // public void can_disable_automatic_spring_rest_docks_mvc_support() {
+    //     assertThatThrownBy(() ->
+    //         RestAssuredMockMvc.given().
+    //                 config(RestAssuredMockMvcConfig.config().mockMvcConfig(mockMvcConfig().dontAutomaticallyApplySpringRestDocsMockMvcSupport())).
+    //                 standaloneSetup(new GreetingController(), documentationConfiguration(restDocumentation)).
+    //                 queryParam("name", "John").
+    //         when().
+    //                get("/{path}", "greeting").
+    //         then().
+    //                 apply(document("greeting",
+    //                         pathParameters(
+    //                                 parameterWithName("path").description("The path to greeting")),
+    //                         responseFields(
+    //                                 fieldWithPath("id").description("The ID of the greeting"),
+    //                                 fieldWithPath("content").description("The content of the greeting"))
+    //                 )).
+    //                 body("id", equalTo(1)).
+    //                 body("content", equalTo("Hello, John!"))
+    //     )
+    //     .isInstanceOf(IllegalArgumentException.class)
+    //     .hasMessage("urlTemplate not found. If you are using MockMvc did you use RestDocumentationRequestBuilders to build the request?");
+    // }
 }

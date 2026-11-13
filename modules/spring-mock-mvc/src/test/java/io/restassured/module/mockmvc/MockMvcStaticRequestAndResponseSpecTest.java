@@ -19,16 +19,13 @@ package io.restassured.module.mockmvc;
 import io.restassured.builder.ResponseSpecBuilder;
 import io.restassured.module.mockmvc.http.GreetingController;
 import io.restassured.module.mockmvc.specification.MockMvcRequestSpecBuilder;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.ExpectedException;
+import org.junit.jupiter.api.Test;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 
 public class MockMvcStaticRequestAndResponseSpecTest {
-    @Rule
-    public ExpectedException exception = ExpectedException.none();
-
     @Test public void
     request_and_response_spec_can_be_defined_statically() {
         RestAssuredMockMvc.requestSpecification = new MockMvcRequestSpecBuilder().addQueryParam("name", "Johan").build();
@@ -48,27 +45,47 @@ public class MockMvcStaticRequestAndResponseSpecTest {
     }
 
     @Test public void
-    response_validation_fails_if_any_property_in_the_response_is_not_valid() {
+    response_aware_matcher_in_static_response_spec_can_use_the_response_path() {
         RestAssuredMockMvc.requestSpecification = new MockMvcRequestSpecBuilder().addQueryParam("name", "Johan").build();
-        RestAssuredMockMvc.responseSpecification = new ResponseSpecBuilder().expectStatusCode(200).expectBody("content", equalTo("Hello, John!")).build();
-
-        exception.expect(AssertionError.class);
-        exception.expectMessage("1 expectation failed.\n" +
-                "JSON path content doesn't match.\n" +
-                "Expected: Hello, John!\n" +
-                "  Actual: Hello, Johan!");
+        // The matcher reads the body with path(..), which needs the config of the response
+        RestAssuredMockMvc.responseSpecification = new ResponseSpecBuilder().expectHeader("Content-Type", response ->
+                containsString(response.<String>path("content").equals("Hello, Johan!") ? "json" : "path(..) gave the wrong content")).build();
 
         try {
-            // When
             RestAssuredMockMvc.given().
                     standaloneSetup(new GreetingController()).
             when().
                     get("/greeting").
             then().
-                    body("id", equalTo(1));
+                    statusCode(200);
         } finally {
             RestAssuredMockMvc.reset();
         }
+    }
+
+    @Test public void
+    response_validation_fails_if_any_property_in_the_response_is_not_valid() {
+        RestAssuredMockMvc.requestSpecification = new MockMvcRequestSpecBuilder().addQueryParam("name", "Johan").build();
+        RestAssuredMockMvc.responseSpecification = new ResponseSpecBuilder().expectStatusCode(200).expectBody("content", equalTo("Hello, John!")).build();
+
+        assertThatThrownBy(() -> {
+            try {
+                // When
+                RestAssuredMockMvc.given().
+                        standaloneSetup(new GreetingController()).
+                when().
+                        get("/greeting").
+                then().
+                        body("id", equalTo(1));
+            } finally {
+                RestAssuredMockMvc.reset();
+            }
+        })
+        .isInstanceOf(AssertionError.class)
+        .hasMessageContaining("1 expectation failed.\n" +
+                "JSON path content doesn't match.\n" +
+                "Expected: Hello, John!\n" +
+                "  Actual: Hello, Johan!");
     }
 
     @Test public void
@@ -76,20 +93,21 @@ public class MockMvcStaticRequestAndResponseSpecTest {
         RestAssuredMockMvc.requestSpecification = new MockMvcRequestSpecBuilder().addQueryParam("name", "Johan").build();
         RestAssuredMockMvc.responseSpecification = new ResponseSpecBuilder().expectStatusCode(200).expectBody("content", equalTo("Hello, John!")).build();
 
-        exception.expect(AssertionError.class);
-        exception.expectMessage("1 expectation failed.\n" +
+        assertThatThrownBy(() -> {
+            try {
+                // When
+                RestAssuredMockMvc.given().
+                        standaloneSetup(new GreetingController()).
+                when().
+                        get("/greeting");
+            } finally {
+                RestAssuredMockMvc.reset();
+            }
+        })
+        .isInstanceOf(AssertionError.class)
+        .hasMessageContaining("1 expectation failed.\n" +
                 "JSON path content doesn't match.\n" +
                 "Expected: Hello, John!\n" +
                 "  Actual: Hello, Johan!");
-
-        try {
-            // When
-            RestAssuredMockMvc.given().
-                    standaloneSetup(new GreetingController()).
-            when().
-                    get("/greeting");
-        } finally {
-            RestAssuredMockMvc.reset();
-        }
     }
 }
